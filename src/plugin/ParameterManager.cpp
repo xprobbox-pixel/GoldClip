@@ -17,7 +17,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout ParameterManager::layout()
         p.add(std::make_unique<juce::AudioParameterFloat>(
             juce::ParameterID{id, 1}, name, juce::NormalisableRange<float>{lo, hi, .01f}, def,
             juce::AudioParameterFloatAttributes().withLabel(unit).withStringFromValueFunction(
-                [](float x, int) { return juce::String(x, 1); })));
+                [](float x, int) { return juce::String(std::abs(x) < .05f ? 0.0f : x, 1); })));
     };
     number("input", "Input Trim", -12, 12, 0, "dB");
     number("output", "Output Trim", -12, 12, 0, "dB");
@@ -39,10 +39,13 @@ ParameterManager::ParameterManager(juce::AudioProcessor &owner)
 }
 Parameters ParameterManager::snapshot() const noexcept
 {
-    return validated({values[0]->load(), values[1]->load(), values[2]->load() / 100.0,
-                      values[3]->load(), values[4]->load(), values[5]->load() > .5f,
-                      values[6]->load() > .5f, values[7]->load() > .5f, values[8]->load() > .5f,
-                      values[9]->load() > .5f});
+    // APVTS stores floats; recover the declared 0.01-unit grid before gain conversion.
+    // Some platforms return a tiny nonzero value for a nominal 0 dB parameter.
+    const auto onGrid = [this](size_t index) noexcept
+    { return std::round(double(values[index]->load()) * 100.0) / 100.0; };
+    return validated({onGrid(0), onGrid(1), onGrid(2) / 100.0, onGrid(3), onGrid(4),
+                      values[5]->load() > .5f, values[6]->load() > .5f, values[7]->load() > .5f,
+                      values[8]->load() > .5f, values[9]->load() > .5f});
 }
 void ParameterManager::save(juce::MemoryBlock &bytes, bool compact, int width)
 {

@@ -24,6 +24,9 @@ int main(int argc, char **argv)
     auto master = std::make_unique<aurum::PluginProcessor>(false),
          restored = std::make_unique<aurum::PluginProcessor>(false),
          track = std::make_unique<aurum::PluginProcessor>(true);
+    const auto neutral = master->parameters.snapshot();
+    check(neutral.inputDb == 0 && neutral.outputDb == 0 && neutral.wetDb == 0 && neutral.blend == 1,
+          "neutral APVTS controls map exactly to the declared parameter grid");
     set(*master, "input", 5.25f);
     set(*master, "blend", 34);
     master->editorWidth = 1500;

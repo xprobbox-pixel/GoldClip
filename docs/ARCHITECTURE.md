@@ -22,4 +22,6 @@ Audio → editor: fixed 1024-element single-producer/single-consumer envelope qu
 
 GUI: custom vector controls, black/gold original branding, a transformed controls layer at 80–175%, fixed variant aspect ratio; host editor HiDPI transform is preserved. Actual input envelopes are grey and actual output envelopes gold. This foundation does not implement the final Gold/clip semantics or a clipping ceiling line. No LUFS text appears because loudness analysis is not implemented.
 
+Effective DSP values are rounded to the declared 0.01-unit parameter grid at the block boundary; this removes platform-dependent floating-point offsets at nominal 0 dB and 100% blend without weakening sample-precision tests.
+
 State: stable version-1 parameter IDs, complete validated APVTS transactions, variant guard and schema guard. Unknown future schemas, malformed/missing/duplicated known parameters and nonfinite values reject the transaction. Finite numeric values clamp to declared ranges. Width is bounded to variant scaling limits. State parsing and serialization are host lifecycle operations, outside the callback. UI size currently persists in host state, not a global preferences file.
