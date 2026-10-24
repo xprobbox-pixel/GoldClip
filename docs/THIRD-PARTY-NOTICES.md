@@ -1,6 +1,6 @@
 # Dependency and distribution notices
 
-JUCE 9.0.4: https://github.com/juce-framework/JUCE/tree/3fb5cbc0340758596dac39f7c8de47d562b4896e . JUCE licensing must suit the intended use and distribution. Review the pinned checkout's LICENSE.md and module notices; this repository does not grant commercial JUCE rights.
+JUCE 8.0.16-security: https://github.com/juce-framework/JUCE/tree/ea77444750de45e036e0279bb0291144bf8e3688 . JUCE licensing must suit the intended use and distribution. Review the pinned checkout's LICENSE.md and module notices; this repository does not grant commercial JUCE rights.
 
 VST3 SDK interfaces are supplied through JUCE. Review the bundled SDK licensing notices before distribution. Audio Unit APIs are supplied by Apple SDKs. pluginval 1.0.3 is used as a CI validation tool, not bundled with the product; see https://github.com/Tracktion/pluginval . Third-party build actions/tools retain their own licences.
 

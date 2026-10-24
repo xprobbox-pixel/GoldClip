@@ -21,7 +21,7 @@ Original input → split: dry stays unchanged; wet → Input Trim. Combine paths
 
 CMake ≥3.24, C++20, Git, Python 3.9+. Tested tool versions are recorded in validation reports. CI pins CMake 3.31.6 and Ninja 1.11.1.4. Windows requires Visual Studio 2022 Desktop C++ and Windows SDK; macOS requires Xcode/Command Line Tools with Universal SDK support and Ninja. Native CI never treats one OS as validation for another.
 
-JUCE **9.0.4** is pinned by immutable commit in `cmake/Identity.cmake`. CMake FetchContent fetches it automatically. To use an existing checkout, set `JUCE_SOURCE_DIR` with the scripts or configure with `-DJUCE_SOURCE_DIR=/absolute/JUCE`. The checkout Git HEAD must match the pinned hash; uncommitted dependency edits must be reviewed separately. The offline **dsp-only** preset needs no JUCE or network. Central identity/version/plugin codes are in the same CMake file. These are development defaults; preserve plugin codes after sessions are created.
+JUCE **8.0.16-security** is pinned by immutable commit in `cmake/Identity.cmake`. CMake FetchContent fetches it automatically. To use an existing checkout, set `JUCE_SOURCE_DIR` with the scripts or configure with `-DJUCE_SOURCE_DIR=/absolute/JUCE`. The checkout Git HEAD must match the pinned hash; uncommitted dependency edits must be reviewed separately. The offline **dsp-only** preset needs no JUCE or network. Central identity/version/plugin codes are in the same CMake file. These are development defaults; preserve plugin codes after sessions are created.
 
 ```sh
 python3 -m pip install cmake==3.31.6 ninja==1.11.1.4
