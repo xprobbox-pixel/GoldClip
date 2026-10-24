@@ -51,8 +51,9 @@ class ProcessingEngine
                     safe(ParallelMixer::combine(wetSample, original[c], {w, d}, difference) * b);
                 // Immediate host bypass; plugin bypass uses a 20 ms crossfade. Both retain dry
                 // unity.
-                double result =
-                    hostBypassed ? original[c] : safe(mixed + (original[c] - mixed) * pass);
+                double result = (hostBypassed || pass == 1.0)
+                                    ? original[c]
+                                    : safe(mixed + (original[c] - mixed) * pass);
                 if (std::abs(result) > double(std::numeric_limits<Sample>::max()))
                     result = 0;
                 audio[c][i] = Sample(result);

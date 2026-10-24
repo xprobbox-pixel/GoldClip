@@ -126,7 +126,7 @@ template <class T> void routing()
                 engine.reset(p);
                 left.fill(T(.1));
                 engine.process(audio, channels, block, p);
-                near(left[0], .1, 1e-7, "plugin bypass dry unity");
+                check(left[0] == T(.1), "settled plugin bypass is bit-exact dry unity");
                 p.bypass = false;
                 engine.reset(p);
                 left.fill(T(.1));
