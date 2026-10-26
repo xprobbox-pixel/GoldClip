@@ -242,6 +242,22 @@ void clipCurves()
     near(aurum::clipSample(2, 1, aurum::ClipMode::off), 2, 0, "Off never clips");
     near(aurum::clipSample(std::numeric_limits<double>::infinity(), 1, aurum::ClipMode::hard), 0, 0,
          "invalid clip input sanitised");
+    double harmonics[2][2]{};
+    for (int family = 0; family < 2; ++family)
+        for (int n = 0; n < 8192; ++n)
+        {
+            const double phase = 2 * std::acos(-1.) * n / 8192;
+            const double output =
+                aurum::clipSample(1.2 * std::sin(phase), 1,
+                                  family == 0 ? aurum::ClipMode::classic : aurum::ClipMode::modern);
+            harmonics[family][0] += output * std::sin(3 * phase) * 2 / 8192;
+            harmonics[family][1] += output * std::sin(5 * phase) * 2 / 8192;
+        }
+    check(std::abs(harmonics[0][0] - harmonics[1][0]) > .001 &&
+              std::abs(harmonics[0][1] - harmonics[1][1]) > .001,
+          "Classic and Modern have distinct third/fifth harmonic characteristics");
+    std::cout << "MEASURE Classic H3=" << harmonics[0][0] << " H5=" << harmonics[0][1]
+              << "; Modern H3=" << harmonics[1][0] << " H5=" << harmonics[1][1] << '\n';
     for (auto mode : {aurum::ClipMode::classic, aurum::ClipMode::modern})
     {
         const double knee = mode == aurum::ClipMode::classic ? .8 : .5, high = 2 - knee, h = 1e-5;
