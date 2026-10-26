@@ -736,13 +736,22 @@ void PluginEditor::drawMeter(Graphics &g, Rectangle<float> r, bool input)
 void PluginEditor::mouseDoubleClick(const MouseEvent &event)
 {
     const auto p = event.position / float(getWidth() / double(baseWidth));
-    if ((p.x < 245 || p.x > 920) && p.y > 115 && p.y < 440)
+    if (!processor.isCompact() && p.x < 150 && p.y > 330 && p.y < 480)
     {
-        setParameter("meterScale", float((meterScale + 1) % 3));
+        reset.onClick();
+        return;
+    }
+    const bool track = processor.isCompact();
+    const auto left =
+        track ? Rectangle<float>(12, 142, 86, 232) : Rectangle<float>(155, 122, 90, 270);
+    const auto right =
+        track ? Rectangle<float>(422, 142, 86, 232) : Rectangle<float>(920, 122, 90, 270);
+    if (left.contains(p) || right.contains(p))
+    {
+        meterScale = (processor.parameters.snapshot().meterScale + 1) % 3;
+        setParameter("meterScale", float(meterScale));
         repaint();
     }
-    else if (!processor.isCompact() && p.x < 150 && p.y > 330 && p.y < 480)
-        reset.onClick();
 }
 void PluginEditor::paint(Graphics &original)
 {

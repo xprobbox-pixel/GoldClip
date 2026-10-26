@@ -2,6 +2,7 @@
 #include "ClippingTests.h"
 #include "MeasurementExport.h"
 #include "plugin/PluginProcessor.h"
+#include "ui/PluginEditor.h"
 #include <iostream>
 #include <thread>
 namespace
@@ -290,6 +291,30 @@ int main(int argc, char **argv)
     auto editor = std::unique_ptr<juce::AudioProcessorEditor>(restored->createEditor());
     check(editor->getWidth() == 1500 && editor->getHeight() == 750,
           "saved editor dimensions respected");
+    {
+        auto doubleClick = [&](float x, float y)
+        {
+            const auto now = juce::Time::getCurrentTime();
+            const float scale = editor->getWidth() / 1200.f;
+            const juce::Point<float> point(x * scale, y * scale);
+            juce::MouseEvent event(juce::Desktop::getInstance().getMainMouseSource(), point, {}, 1,
+                                   0, 0, 0, 0, editor.get(), editor.get(), now, point, now, 2,
+                                   false);
+            editor->mouseDoubleClick(event);
+        };
+        restored->telemetry.recordClip(5, 20);
+        set(*restored, "meterScale", 0);
+        doubleClick(90, 365);
+        double frame[]{0, 0};
+        restored->telemetry.push(frame, frame, 2);
+        check(restored->telemetry.analysis().clip == 0 &&
+                  restored->parameters.snapshot().meterScale == 0,
+              "double-click Clip Clock resets measurements without changing meter scale");
+        doubleClick(200, 380);
+        check(restored->parameters.snapshot().meterScale == 1,
+              "double-click meter scale cycles the saved display range");
+        set(*restored, "meterScale", 0);
+    }
     editor->setSize(960, 480);
     check(restored->editorWidth == 960 && editor->isResizable(), "host resize saved");
     editor.reset();
