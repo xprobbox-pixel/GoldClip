@@ -22,7 +22,7 @@ Pinned JUCE stage design parameters, normalised transition width and requested s
 | First 2× | 0.05 / -90 dB | 0.06 / -75 dB |
 | Second 2× | 0.10 / -80 dB | 0.12 / -65 dB |
 
-These are filter design inputs, **not measured system alias-rejection claims**. Actual coefficient lengths, reported delay and a specific alias measurement are printed by the automated host tests. JUCE's integer latency correction adds a fractional-delay allpass when necessary. FIR stages themselves are linear phase; the final combined phase response must not be described as perfectly linear phase across the entire spectrum. Aligned dry compensation matches the reported delay, not every frequency-dependent filter response.
+These are filter design inputs, **not measured system alias-rejection claims**. Actual coefficient lengths, reported delay and a specific alias measurement are printed by the automated host tests and recorded in [Phase 2A validation](PHASE2-VALIDATION.md). JUCE's integer latency correction adds a fractional-delay allpass when necessary. FIR stages themselves are linear phase; the final combined phase response must not be described as perfectly linear phase across the entire spectrum. Aligned dry compensation matches the reported delay, not every frequency-dependent filter response.
 
 All storage is prepared outside the callback. Audio processing uses internal chunks <=256 host samples and bounded arrays/rings. No property-tree access or locks occur in the callback. The engine keeps processing with the editor closed.
 
