@@ -14,7 +14,10 @@ for variant in Master Track; do
   mkdir -p "dist/$variant/$format"
   for bundle in "$src/"*; do
    lipo "$bundle/Contents/MacOS/AURUM CLIP $variant" -verify_arch arm64 x86_64
-   ditto "$bundle" "dist/$variant/$format/$(basename "$bundle")"
+   destination="dist/$variant/$format/$(basename "$bundle")"
+   ditto "$bundle" "$destination"
+   # JUCE may generate VST3 metadata after its build-time seal. Seal the final staged bundle.
+   bash scripts/seal-development-macos.sh "$destination"
   done
  done
 done

@@ -46,7 +46,7 @@ $env:JUCE_SOURCE_DIR='C:/src/JUCE'
 
 If a locally mixed CLT installation selects stale libc++ headers, see the environment-specific workaround in [reference/toolchain notes](docs/REFERENCES.md); native CI uses matched compiler/SDK environments.
 
-Native scripts run DSP and host/state tests, render real editor snapshots, and copy compiled products into `dist/{Master,Track}/{VST3,AU,Standalone}` (AU on macOS only). `dist/manifest.json` records source commit, file sizes, SHA-256 hashes and available native header inspection. Ordinary builds are unsigned development artifacts; macOS toolchains may apply ad-hoc signatures. No Developer ID, Authenticode or notarisation is claimed.
+Native scripts run DSP and host/state tests, render real editor snapshots, and copy compiled products into `dist/{Master,Track}/{VST3,AU,Standalone}` (AU on macOS only). `dist/manifest.json` records source commit, file sizes, SHA-256 hashes and available native header inspection. Ordinary builds are unsigned development artifacts. macOS staging applies ad-hoc development seals after all bundle metadata is generated, then verifies every architecture. This is a local integrity/loader requirement and uses no release credentials. No Developer ID, Authenticode or notarisation is claimed.
 
 ## Test and CI workflow
 
