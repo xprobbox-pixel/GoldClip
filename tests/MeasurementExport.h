@@ -97,6 +97,90 @@ inline void exportAll(const juce::File &directory)
                                          std::max(1e-20, std::hypot(re, im)))
                       << ',' << peak << ',' << elapsed << '\n';
             }
+    std::ofstream lpf(path("clip-filter.csv"));
+    lpf << "rate,cutoff,hz,db\n";
+    for (double rate : {44100., 48000., 96000.})
+        for (double cutoff : {8000., 20000.})
+        {
+            aurum::Parameters p;
+            p.clipFilter = true;
+            p.clipFilterHz = cutoff;
+            p.peakGuard = false;
+            aurum::QualityBank<double> engine;
+            engine.prepare(rate, 1, p);
+            std::array<double, 4096> impulse{};
+            impulse[0] = .1;
+            double *audio[]{impulse.data()};
+            engine.process(audio, 1, int(impulse.size()), p);
+            for (double hz : {100., 1000., 4000., 8000., 12000., 16000., 20000.})
+            {
+                double re = 0, im = 0;
+                for (size_t i = 0; i < impulse.size(); ++i)
+                {
+                    const double angle = 2 * std::acos(-1.) * hz * i / rate;
+                    re += impulse[i] * std::cos(angle);
+                    im += impulse[i] * std::sin(angle);
+                }
+                const double db = 20 * std::log10(std::hypot(re, im) / .1);
+                lpf << rate << ',' << cutoff << ',' << hz << ',' << db << '\n';
+                if (hz == 100 && std::abs(db) > .1)
+                    throw std::runtime_error("Clip Filter low-frequency response failed");
+                if (hz == cutoff && (db > -2 || db < -4.5))
+                    throw std::runtime_error("Clip Filter cutoff response failed");
+            }
+        }
+    std::ofstream performance(path("performance.csv"));
+    performance << "rate,channels,quality,phase,frames,seconds,realtime_ratio,latency,peak\n";
+    for (double rate : {44100., 48000., 88200., 96000., 192000.})
+        for (unsigned channels : {1u, 2u})
+            for (int phase = 0; phase < 2; ++phase)
+                for (int quality = 0; quality < 3; ++quality)
+                {
+                    aurum::Parameters p;
+                    p.clipMode = 2;
+                    p.goldMode = 1;
+                    p.goldDb = 3;
+                    p.alchemyDb = 2;
+                    p.boxTone = 2;
+                    p.quality = quality;
+                    p.filterPhase = phase;
+                    p.ceilingDb = -1;
+                    aurum::QualityBank<double> engine;
+                    engine.prepare(rate, channels, p, true);
+                    std::array<double, 257> left{}, right{};
+                    double *audio[]{left.data(), right.data()};
+                    double peak = 0;
+                    const int frames = int(rate * .25);
+                    const auto start = std::chrono::steady_clock::now();
+                    for (int offset = 0; offset < frames; offset += 257)
+                    {
+                        const int n = std::min(257, frames - offset);
+                        for (int i = 0; i < n; ++i)
+                        {
+                            left[size_t(i)] =
+                                .9 * std::sin(2 * std::acos(-1.) * 997 * (offset + i) / rate);
+                            right[size_t(i)] = -left[size_t(i)];
+                        }
+                        engine.process(audio, channels, n, p);
+                        for (int i = 0; i < n; ++i)
+                        {
+                            const double y = left[size_t(i)];
+                            if (!std::isfinite(y) || std::abs(y) > aurum::gain(-1) + 1e-9)
+                                throw std::runtime_error(
+                                    "Quality/rate matrix peak or finite-output failure");
+                            if (channels == 2 && std::abs(y + right[size_t(i)]) > 1e-9)
+                                throw std::runtime_error(
+                                    "Quality/rate matrix stereo symmetry failure");
+                            peak = std::max(peak, std::abs(y));
+                        }
+                    }
+                    const double elapsed =
+                        std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
+                            .count();
+                    performance << rate << ',' << channels << ',' << quality << ',' << phase << ','
+                                << frames << ',' << elapsed << ',' << (frames / rate) / elapsed
+                                << ',' << engine.latencySamples() << ',' << peak << '\n';
+                }
     std::ofstream response(path("box-tone.csv"));
     response << "rate,mode,hz,db\n";
     for (double rate : {44100., 48000., 96000.})
@@ -176,7 +260,7 @@ inline void exportAll(const juce::File &directory)
         return double(seed) / 4294967295. * 2 - 1;
     };
     std::ofstream summary(path("signals.csv"));
-    summary << "signal,input_lufs,output_lufs,input_peak,output_peak\n";
+    summary << "signal,input_lufs,output_lufs,input_peak,output_peak,latency_samples\n";
     for (int signal = 0; signal < 4; ++signal)
     {
         constexpr int samples = 240000;
@@ -252,7 +336,7 @@ inline void exportAll(const juce::File &directory)
         wav(directory.getChildFile(name + "-input.wav"), original);
         wav(directory.getChildFile(name + "-output.wav"), processed);
         summary << name << ',' << inputMeter.shortTerm() << ',' << outputMeter.shortTerm() << ','
-                << inputPeak << ',' << outputPeak << '\n';
+                << inputPeak << ',' << outputPeak << ',' << engine.latencySamples() << '\n';
     }
 }
 } // namespace measurements

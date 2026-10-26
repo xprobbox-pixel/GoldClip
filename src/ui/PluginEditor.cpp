@@ -111,9 +111,9 @@ PluginEditor::PluginEditor(PluginProcessor &p)
         "Linked linear wet/dry blend. Both paths use fixed compensated delay.",
         "Independent wet gain, active when Wet/Dry Link is off.",
         "Independent original dry gain, active when Wet/Dry Link is off.",
-        "Instantaneous ceiling-relative bottom-up enhancement. Modern 0–2.5 dB; Classic 0–6 dB. "
+        "Instantaneous ceiling-relative bottom-up enhancement. Modern 0-2.5 dB; Classic 0-6 dB. "
         "Independent approximations.",
-        "Stereo-linked dynamic upper-frequency contour, 0–2 dB. Master only.",
+        "Stereo-linked dynamic upper-frequency contour, 0-2 dB. Master only.",
         "Nonlinear-stage ceiling. The optional wet sample guard controls reconstructed wet "
         "samples; parallel sums can exceed it. No true-peak guarantee.",
         "Linked trim sum: effective Output = Offset minus Input. Shift-drag Input changes offset."};
@@ -217,7 +217,7 @@ PluginEditor::PluginEditor(PluginProcessor &p)
     for (int percent : {80, 100, 125, 150, 175})
         scale.addItem(String(percent) + "%", percent);
     scale.setName("Window scale");
-    scale.setTooltip("80–175% interface scaling. Drag the corner for intermediate sizes.");
+    scale.setTooltip("80-175% interface scaling. Drag the corner for intermediate sizes.");
     scale.onChange = [this]
     {
         if (scale.getSelectedId() > 0)
