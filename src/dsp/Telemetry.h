@@ -1,4 +1,5 @@
 #pragma once
+#include "LoudnessMeter.h"
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -22,6 +23,11 @@ class Telemetry
     std::array<std::atomic<float>, 2> input{}, output{};
     std::atomic<unsigned> dropped{0};
     std::atomic<bool> overload{false};
+    LoudnessMeter inputLoudness, outputLoudness;
+    std::atomic<float> inputLufs{NAN}, outputLufs{NAN}, maxClip{0};
+    std::atomic<double> clipSeconds{NAN};
+    std::atomic<bool> resetRequested{false};
+    std::atomic<unsigned> clipSequence{0};
     Envelope pending{};
     unsigned count = 0;
     static void max(std::atomic<float> &dest, float value) noexcept
@@ -32,9 +38,72 @@ class Telemetry
         }
     }
 
+    void consumeReset() noexcept
+    {
+        if (resetRequested.exchange(false, std::memory_order_relaxed))
+        {
+            inputLoudness.reset();
+            outputLoudness.reset();
+            inputLufs = NAN;
+            outputLufs = NAN;
+            clipSequence.fetch_add(1, std::memory_order_acq_rel);
+            maxClip = 0;
+            clipSeconds = NAN;
+            clipSequence.fetch_add(1, std::memory_order_release);
+        }
+    }
+
   public:
+    std::atomic<bool> waveformEnabled{true};
+    void prepare(double rate) noexcept
+    {
+        for (auto &peak : input)
+            peak = 0;
+        for (auto &peak : output)
+            peak = 0;
+        overload = false;
+        inputLoudness.prepare(rate);
+        outputLoudness.prepare(rate);
+        inputLufs = NAN;
+        outputLufs = NAN;
+        maxClip = 0;
+        clipSeconds = NAN;
+    }
+    void resetMeasurements() noexcept
+    {
+        resetRequested = true;
+    }
+    void recordClip(float amount, double seconds) noexcept
+    {
+        consumeReset();
+        if (amount > maxClip.load(std::memory_order_relaxed))
+        {
+            clipSequence.fetch_add(1, std::memory_order_acq_rel);
+            clipSeconds.store(seconds, std::memory_order_relaxed);
+            maxClip.store(amount, std::memory_order_relaxed);
+            clipSequence.fetch_add(1, std::memory_order_release);
+        }
+    }
+    struct Analysis
+    {
+        float inputLufs, outputLufs, clip;
+        double seconds;
+    };
+    Analysis analysis() const noexcept
+    {
+        const auto before = clipSequence.load(std::memory_order_acquire);
+        Analysis result{inputLufs.load(), outputLufs.load(), maxClip.load(), clipSeconds.load()};
+        if ((before & 1u) != 0 || before != clipSequence.load(std::memory_order_acquire))
+            result.seconds = NAN;
+        return result;
+    }
     void push(const double *in, const double *out, unsigned channels) noexcept
     {
+        consumeReset();
+        if (inputLoudness.push(in, channels))
+            inputLufs.store(float(inputLoudness.shortTerm()), std::memory_order_relaxed);
+        if (outputLoudness.push(out, channels))
+            outputLufs.store(float(outputLoudness.shortTerm()), std::memory_order_relaxed);
         for (unsigned c = 0; c < channels; ++c)
         {
             const auto a = float(std::clamp(in[c], -1.0e6, 1.0e6)),
@@ -52,6 +121,12 @@ class Telemetry
         }
         if (++count < 64)
             return;
+        if (!waveformEnabled.load(std::memory_order_relaxed))
+        {
+            pending = {};
+            count = 0;
+            return;
+        }
         const auto w = write.load(std::memory_order_relaxed);
         if (w - read.load(std::memory_order_acquire) < capacity)
         {

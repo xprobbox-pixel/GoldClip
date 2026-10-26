@@ -1,3 +1,4 @@
+#include "ProductTests.h"
 #include "dsp/ClipperEngine.h"
 #include "dsp/ProcessingEngine.h"
 #include <array>
@@ -276,6 +277,9 @@ int main()
     smoothingAndSafety();
     telemetry();
     clipCurves();
+    product_tests::curves(check);
+    product_tests::metering(check);
+    product_tests::contours(check);
     std::cout << checks << " checks; " << failures << " failures\n";
     return failures ? 1 : 0;
 }

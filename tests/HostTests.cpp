@@ -1,5 +1,6 @@
 #include "AllocationProbe.h"
 #include "ClippingTests.h"
+#include "MeasurementExport.h"
 #include "plugin/PluginProcessor.h"
 #include <iostream>
 #include <thread>
@@ -21,7 +22,19 @@ void set(aurum::PluginProcessor &p, const char *id, float value)
 } // namespace
 int main(int argc, char **argv)
 {
+#if defined(_WIN32)
+    _putenv_s("AURUM_NO_SETTINGS", "1");
+#else
+    setenv("AURUM_NO_SETTINGS", "1", 1);
+#endif
     juce::ScopedJuceInitialiser_GUI gui;
+    const auto testPresetDirectory = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                                         .getNonexistentChildFile("AurumPresets", "", false);
+#if defined(_WIN32)
+    _putenv_s("AURUM_PRESET_DIR", testPresetDirectory.getFullPathName().toRawUTF8());
+#else
+    setenv("AURUM_PRESET_DIR", testPresetDirectory.getFullPathName().toRawUTF8(), 1);
+#endif
     // Processors must outlive all editors and parameter attachments.
     auto master = std::make_unique<aurum::PluginProcessor>(false),
          restored = std::make_unique<aurum::PluginProcessor>(false),
@@ -51,6 +64,47 @@ int main(int argc, char **argv)
         allocation_probe::enabled = false;
         check(allocation_probe::count == 0,
               "oversampled callback and mode changes perform no C++ new/new[]");
+    }
+    {
+        aurum::QualityBank<double> engine;
+        aurum::Parameters p;
+        p.clipMode = 1;
+        p.goldDb = 2;
+        engine.prepare(48000, 2, p);
+        const int latency = engine.latencySamples();
+        std::array<double, 257> l{}, r{};
+        double *audio[]{l.data(), r.data()};
+        bool finite = true;
+        double jump = 0, previous = 0;
+        allocation_probe::count = 0;
+        allocation_probe::enabled = true;
+        for (int block = 0; block < 300; ++block)
+        {
+            if (block % 50 == 0)
+            {
+                p.quality = (block / 50) % 3;
+                p.filterPhase = (block / 150) % 2;
+            }
+            for (int i = 0; i < 257; ++i)
+            {
+                l[size_t(i)] = .2;
+                r[size_t(i)] = -.2;
+            }
+            engine.process(audio, 2, 257, p);
+            for (double y : l)
+            {
+                finite = finite && std::isfinite(y);
+                if (block > 2)
+                    jump = std::max(jump, std::abs(y - previous));
+                previous = y;
+            }
+        }
+        allocation_probe::enabled = false;
+        check(finite && engine.latencySamples() == latency,
+              "all quality/filter changes preserve fixed PDC and finite output");
+        check(allocation_probe::count == 0,
+              "quality warmup and crossfades allocate no C++ new/new[]");
+        check(jump < .02, "quality switching does not introduce a DC discontinuity above 0.02");
     }
     const auto neutral = master->parameters.snapshot();
     check(neutral.inputDb == 0 && neutral.outputDb == 0 && neutral.wetDb == 0 && neutral.blend == 1,
@@ -140,6 +194,43 @@ int main(int argc, char **argv)
     master->processBlock(d, midi);
     check(std::abs(d.getSample(0, latency) - .123456789012) < 1e-14,
           "64-bit host processing precision");
+    set(*restored, "input", 1);
+    restored->presets.selectAB(1);
+    set(*restored, "input", 4);
+    restored->presets.selectAB(0);
+    check(restored->parameters.snapshot().inputDb == 1,
+          "A/B starts tracking then preserves independent A");
+    restored->presets.selectAB(1);
+    check(restored->parameters.snapshot().inputDb == 4, "B restores independent edits");
+    restored->presets.copyAB(1, 0);
+    restored->presets.selectAB(0);
+    check(restored->parameters.snapshot().inputDb == 4, "copy B to A restores exact parameters");
+    juce::MemoryBlock abState;
+    restored->getStateInformation(abState);
+    restored->setStateInformation(abState.getData(), int(abState.getSize()));
+    restored->presets.selectAB(1);
+    check(restored->parameters.snapshot().inputDb == 4,
+          "both A/B states survive host state round trip");
+    check(track->parameters.state.getParameter("alchemy") == nullptr &&
+              track->parameters.state.getParameter("boxTone") == nullptr,
+          "Track does not expose Master-only DSP parameters");
+    restored->presets.factory(1);
+    check(restored->parameters.snapshot().goldDb == .8 &&
+              restored->parameters.snapshot().clipMode == 3,
+          "factory preset sets real processing parameters");
+    check(restored->presets.saveUser("User Test"), "user preset saves atomically");
+    auto userPresets = restored->presets.userPresets();
+    check(userPresets.size() == 1, "user preset enumeration");
+    if (userPresets.size() == 1)
+    {
+        set(*restored, "input", 7);
+        check(restored->presets.loadUser(userPresets[0]) &&
+                  restored->parameters.snapshot().inputDb == 0,
+              "user preset restores exact parameters");
+        check(restored->presets.renameUser(userPresets[0], "Renamed"), "user preset rename");
+        userPresets = restored->presets.userPresets();
+        check(restored->presets.removeUser(userPresets[0]), "user preset delete");
+    }
     auto editor = std::unique_ptr<juce::AudioProcessorEditor>(restored->createEditor());
     check(editor->getWidth() == 1500 && editor->getHeight() == 750,
           "saved editor dimensions respected");
@@ -157,9 +248,16 @@ int main(int argc, char **argv)
         {
             set(*processor, "clipMode", 2);
             set(*processor, "ceiling", -12);
+            set(*processor, "goldMode", 1);
+            set(*processor, "goldClassic", 3);
+            if (!processor->isCompact())
+            {
+                set(*processor, "alchemy", 1.5f);
+                set(*processor, "boxTone", 2);
+            }
             processor->prepareToPlay(48000, 256);
             juce::AudioBuffer<float> audio(2, 256);
-            for (int block = 0; block < 120; ++block)
+            for (int block = 0; block < 800; ++block)
             {
                 for (int i = 0; i < 256; ++i)
                 {
@@ -189,6 +287,9 @@ int main(int argc, char **argv)
             editor.reset();
         }
     }
+    if (argc == 3 && juce::String(argv[1]) == "--measure")
+        measurements::exportAll(juce::File(argv[2]));
+    testPresetDirectory.deleteRecursively();
     std::cout << checks << " host checks; " << failures << " failures\n";
     return failures ? 1 : 0;
 }

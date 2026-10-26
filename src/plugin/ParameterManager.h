@@ -5,14 +5,21 @@ namespace aurum
 {
 class ParameterManager
 {
-    std::array<std::atomic<float> *, 12> values{};
+    bool compact = false;
+    static constexpr const char *ids[]{
+        "input",      "output",         "blend",       "wet",        "dry",          "linked",
+        "wetMute",    "dryMute",        "delta",       "bypass",     "ceiling",      "clipMode",
+        "goldMode",   "goldModern",     "goldClassic", "goldUnity",  "alchemy",      "boxTone",
+        "quality",    "offlineQuality", "filterPhase", "clipFilter", "clipFilterHz", "trimLinked",
+        "trimOffset", "waveform",       "peakGuard",   "meterScale"};
+    std::array<std::atomic<float> *, std::size(ids)> values{};
 
   public:
     juce::AudioProcessorValueTreeState state;
-    explicit ParameterManager(juce::AudioProcessor &);
-    static juce::AudioProcessorValueTreeState::ParameterLayout layout();
+    explicit ParameterManager(juce::AudioProcessor &, bool isCompact = false);
+    static juce::AudioProcessorValueTreeState::ParameterLayout layout(bool compact = false);
     Parameters snapshot() const noexcept;
-    void save(juce::MemoryBlock &, bool compact, int width);
-    bool restore(const void *, int, bool compact, int &width);
+    void save(juce::MemoryBlock &, bool, int);
+    bool restore(const void *, int, bool, int &, bool apply = true);
 };
 } // namespace aurum

@@ -1,17 +1,27 @@
 #pragma once
 #include "ParameterManager.h"
-#include "dsp/OversampledEngine.h"
+#include "PresetManager.h"
+#include "dsp/QualityBank.h"
 namespace aurum
 {
 class PluginProcessor final : public juce::AudioProcessor
 {
     bool compact;
-    OversampledEngine<float> floatEngine;
-    OversampledEngine<double> doubleEngine;
+    QualityBank<float> floatEngine;
+    QualityBank<double> doubleEngine;
     template <class T> void process(juce::AudioBuffer<T> &b, bool bypassed)
     {
         juce::ScopedNoDenormals noDenormals;
         auto p = parameters.snapshot();
+        if (isNonRealtime())
+            p.quality = p.offlineQuality;
+        telemetry.waveformEnabled = p.waveform;
+        double timeline = std::numeric_limits<double>::quiet_NaN();
+        if (auto *head = getPlayHead())
+            if (auto position = head->getPosition())
+                if (position->getIsPlaying())
+                    if (auto time = position->getTimeInSeconds())
+                        timeline = *time;
         auto &engine = [&]() -> auto &
         {
             if constexpr (std::is_same_v<T, float>)
@@ -20,13 +30,15 @@ class PluginProcessor final : public juce::AudioProcessor
                 return doubleEngine;
         }();
         engine.process(b.getArrayOfWritePointers(), unsigned(b.getNumChannels()), b.getNumSamples(),
-                       p, &telemetry, bypassed);
+                       p, &telemetry, bypassed, timeline);
     }
 
   public:
     ParameterManager parameters;
     Telemetry telemetry;
     std::atomic<int> editorWidth;
+    PresetManager presets;
+    std::atomic<bool> hostStateRestored{false};
     explicit PluginProcessor(bool isCompact = AURUM_COMPACT != 0);
     bool isCompact() const noexcept
     {
@@ -100,13 +112,12 @@ class PluginProcessor final : public juce::AudioProcessor
     void changeProgramName(int, const juce::String &) override {}
     void getStateInformation(juce::MemoryBlock &b) override
     {
-        parameters.save(b, compact, editorWidth.load());
+        presets.saveSession(b);
     }
     void setStateInformation(const void *bytes, int size) override
     {
-        int width = editorWidth.load();
-        if (parameters.restore(bytes, size, compact, width))
-            editorWidth = width;
+        if (presets.restoreSession(bytes, size))
+            hostStateRestored = true;
     }
 };
 } // namespace aurum

@@ -6,7 +6,8 @@ PluginProcessor::PluginProcessor(bool isCompact)
     : AudioProcessor(BusesProperties()
                          .withInput("Input", juce::AudioChannelSet::stereo(), true)
                          .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
-      compact(isCompact), parameters(*this), editorWidth(isCompact ? 520 : 1200)
+      compact(isCompact), parameters(*this, isCompact), editorWidth(isCompact ? 520 : 1200),
+      presets(parameters, isCompact, editorWidth)
 {
     setLatencySamples(0);
 }
@@ -19,8 +20,9 @@ bool PluginProcessor::isBusesLayoutSupported(const BusesLayout &layout) const
 void PluginProcessor::prepareToPlay(double rate, int)
 {
     const auto p = parameters.snapshot();
-    floatEngine.prepare(rate, unsigned(getTotalNumInputChannels()), p);
-    doubleEngine.prepare(rate, unsigned(getTotalNumInputChannels()), p);
+    floatEngine.prepare(rate, unsigned(getTotalNumInputChannels()), p, !compact);
+    doubleEngine.prepare(rate, unsigned(getTotalNumInputChannels()), p, !compact);
+    telemetry.prepare(rate);
     setLatencySamples(floatEngine.latencySamples());
 }
 juce::AudioProcessorEditor *PluginProcessor::createEditor()

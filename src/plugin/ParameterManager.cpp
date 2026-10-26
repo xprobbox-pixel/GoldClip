@@ -3,12 +3,7 @@
 #include <sstream>
 namespace aurum
 {
-namespace
-{
-constexpr const char *ids[]{"input",   "output",  "blend", "wet",    "dry",     "linked",
-                            "wetMute", "dryMute", "delta", "bypass", "ceiling", "clipMode"};
-}
-juce::AudioProcessorValueTreeState::ParameterLayout ParameterManager::layout()
+juce::AudioProcessorValueTreeState::ParameterLayout ParameterManager::layout(bool compact)
 {
     juce::AudioProcessorValueTreeState::ParameterLayout p;
     auto number =
@@ -17,51 +12,86 @@ juce::AudioProcessorValueTreeState::ParameterLayout ParameterManager::layout()
         p.add(std::make_unique<juce::AudioParameterFloat>(
             juce::ParameterID{id, 1}, name, juce::NormalisableRange<float>{lo, hi, .01f}, def,
             juce::AudioParameterFloatAttributes().withLabel(unit).withStringFromValueFunction(
-                [](float x, int) { return juce::String(std::abs(x) < .05f ? 0.0f : x, 1); })));
+                [](float x, int) { return juce::String(std::abs(x) < .005f ? 0.f : x, 1); })));
+    };
+    auto boolean = [&](const char *id, const char *name, bool value)
+    { p.add(std::make_unique<juce::AudioParameterBool>(juce::ParameterID{id, 1}, name, value)); };
+    auto choice = [&](const char *id, const char *name, juce::StringArray options)
+    {
+        p.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID{id, 1}, name, options,
+                                                           0));
     };
     number("input", "Input Trim", -12, 12, 0, "dB");
     number("output", "Output Trim", -12, 12, 0, "dB");
     number("blend", "Linked Wet Blend", 0, 100, 100, "%");
     number("wet", "Independent Wet Level", -60, 6, 0, "dB");
     number("dry", "Independent Dry Level", -60, 6, -60, "dB");
-    for (auto item : {std::pair{"linked", "Link Wet/Dry"}, std::pair{"wetMute", "Mute Wet"},
-                      std::pair{"dryMute", "Mute Dry"}, std::pair{"delta", "Delta Monitor"},
-                      std::pair{"bypass", "Bypass"}})
-        p.add(std::make_unique<juce::AudioParameterBool>(
-            juce::ParameterID{item.first, 1}, item.second, juce::String(item.first) == "linked"));
+    boolean("linked", "Link Wet/Dry", true);
+    boolean("wetMute", "Mute Wet", false);
+    boolean("dryMute", "Mute Dry", false);
+    boolean("delta", "Delta Monitor", false);
+    boolean("bypass", "Bypass", false);
     number("ceiling", "Clip Ceiling", -36, 0, 0, "dBFS");
-    p.add(std::make_unique<juce::AudioParameterChoice>(
-        juce::ParameterID{"clipMode", 1}, "Clip Mode",
-        juce::StringArray{"Off", "Hard", "Classic", "Modern"}, 0));
+    choice("clipMode", "Clip Mode", {"Off", "Hard", "Classic", "Modern"});
+    choice("goldMode", "Gold Curve", {"Modern", "Classic"});
+    number("goldModern", "Modern Gold", 0, 2.5, 0, "dB");
+    number("goldClassic", "Classic Gold", 0, 6, 0, "dB");
+    boolean("goldUnity", "Gold Unity", false);
+    if (!compact)
+    {
+        number("alchemy", "Alchemy", 0, 2, 0, "dB");
+        choice("boxTone", "Box Tone", {"Flat", "Classic", "Modern"});
+    }
+    choice("quality", "Realtime Quality", {"High", "Pristine", "Extra Pristine"});
+    choice("offlineQuality", "Offline Quality", {"High", "Pristine", "Extra Pristine"});
+    choice("filterPhase", "Oversampling Phase", {"Linear FIR", "Minimum IIR"});
+    boolean("clipFilter", "Clip Filter", false);
+    number("clipFilterHz", "Clip Filter Cutoff", 4000, 22000, 20000, "Hz");
+    boolean("trimLinked", "Link Trims", false);
+    number("trimOffset", "Linked Trim Offset", -24, 24, 0, "dB");
+    boolean("waveform", "Waveform Display", true);
+    boolean("peakGuard", "Wet Sample Peak Guard", true);
+    choice("meterScale", "Meter Scale", {"+6 to -36 dBFS", "+4 to -24 dBFS", "+2 to -12 dBFS"});
     return p;
 }
-ParameterManager::ParameterManager(juce::AudioProcessor &owner)
-    : state(owner, nullptr, "AurumState", layout())
+ParameterManager::ParameterManager(juce::AudioProcessor &owner, bool isCompact)
+    : compact(isCompact), state(owner, nullptr, "AurumState", layout(isCompact))
 {
     for (size_t i = 0; i < values.size(); ++i)
         values[i] = state.getRawParameterValue(ids[i]);
 }
 Parameters ParameterManager::snapshot() const noexcept
 {
-    // APVTS stores floats; recover the declared 0.01-unit grid before gain conversion.
-    // Some platforms return a tiny nonzero value for a nominal 0 dB parameter.
-    const auto onGrid = [this](size_t index) noexcept
-    { return std::round(double(values[index]->load()) * 100.0) / 100.0; };
-    return validated({onGrid(0), onGrid(1), onGrid(2) / 100.0, onGrid(3), onGrid(4),
-                      values[5]->load() > .5f, values[6]->load() > .5f, values[7]->load() > .5f,
-                      values[8]->load() > .5f, values[9]->load() > .5f, onGrid(10),
-                      int(values[11]->load())});
+    auto v = [&](size_t i, double fallback = 0.)
+    { return values[i] ? std::round(double(values[i]->load()) * 100) / 100 : fallback; };
+    Parameters p{v(0),      v(1),      v(2) / 100, v(3),      v(4),  v(5) > .5,
+                 v(6) > .5, v(7) > .5, v(8) > .5,  v(9) > .5, v(10), int(v(11))};
+    p.goldMode = int(v(12));
+    p.goldDb = v(p.goldMode == 0 ? 13 : 14);
+    p.goldUnity = v(15) > .5;
+    p.alchemyDb = v(16);
+    p.boxTone = int(v(17));
+    p.quality = int(v(18));
+    p.offlineQuality = int(v(19));
+    p.filterPhase = int(v(20));
+    p.clipFilter = v(21) > .5;
+    p.clipFilterHz = v(22, 20000);
+    p.trimLinked = v(23) > .5;
+    p.trimOffset = v(24);
+    p.waveform = v(25) > .5;
+    p.peakGuard = v(26) > .5;
+    p.meterScale = int(v(27));
+    return validated(p);
 }
-void ParameterManager::save(juce::MemoryBlock &bytes, bool compact, int width)
+void ParameterManager::save(juce::MemoryBlock &bytes, bool isCompact, int width)
 {
     auto tree = state.copyState();
-    tree.setProperty("schema", 2, nullptr);
-    tree.setProperty("variant", compact ? "track" : "master", nullptr);
+    tree.setProperty("schema", 3, nullptr);
+    tree.setProperty("variant", isCompact ? "track" : "master", nullptr);
     tree.setProperty("editorWidth", width, nullptr);
-    auto xml = tree.createXml();
-    juce::AudioProcessor::copyXmlToBinary(*xml, bytes);
+    juce::AudioProcessor::copyXmlToBinary(*tree.createXml(), bytes);
 }
-bool ParameterManager::restore(const void *bytes, int size, bool compact, int &width)
+bool ParameterManager::restore(const void *bytes, int size, bool isCompact, int &width, bool apply)
 {
     if (size <= 0 || size > 1024 * 1024)
         return false;
@@ -69,48 +99,60 @@ bool ParameterManager::restore(const void *bytes, int size, bool compact, int &w
     if (!xml || !xml->hasTagName("AurumState"))
         return false;
     auto tree = juce::ValueTree::fromXml(*xml);
-    const int schema = int(tree.getProperty("schema", 0));
-    if ((schema != 1 && schema != 2) ||
-        tree.getProperty("variant").toString() != (compact ? "track" : "master"))
+    int schema = int(tree.getProperty("schema", 0));
+    if (schema < 1 || schema > 3 ||
+        tree.getProperty("variant").toString() != (isCompact ? "track" : "master"))
         return false;
-    // Validate the complete transaction before touching any live parameter.
-    std::array<float, 12> restored{};
-    std::array<bool, 12> found{};
+    std::array<float, std::size(ids)> restored{};
+    std::array<bool, std::size(ids)> found{};
+    for (size_t i = 0; i < values.size(); ++i)
+    {
+        if (!values[i])
+        {
+            found[i] = true;
+            continue;
+        }
+        auto *parameter = state.getParameter(ids[i]);
+        restored[i] = parameter->convertFrom0to1(parameter->getDefaultValue());
+        if ((schema == 1 && i >= 10) || (schema == 2 && i >= 12))
+            found[i] = true;
+    }
     for (auto child : tree)
     {
         const auto id = child.getProperty("id").toString();
         for (size_t i = 0; i < values.size(); ++i)
-            if (id == ids[i])
+            if (values[i] && id == ids[i])
             {
+                // Legacy snapshots may include newer entries (e.g. manual schema edits); consume
+                // only the schema's contract.
+                if ((schema == 1 && i >= 10) || (schema == 2 && i >= 12))
+                    continue;
                 if (found[i] || !child.hasProperty("value"))
                     return false;
-                const auto value = child.getProperty("value");
-                const auto text = value.toString().toStdString();
-                float v = 0;
+                const auto text = child.getProperty("value").toString().toStdString();
+                float value = 0;
                 std::istringstream parser(text);
                 parser.imbue(std::locale::classic());
-                parser >> std::noskipws >> v;
-                if (!parser || !parser.eof() || !std::isfinite(v))
+                parser >> std::noskipws >> value;
+                if (!parser || !parser.eof() || !std::isfinite(value))
                     return false;
                 auto range = state.getParameter(ids[i])->getNormalisableRange();
-                restored[i] = juce::jlimit(range.start, range.end, v);
+                restored[i] = juce::jlimit(range.start, range.end, value);
                 found[i] = true;
             }
-    }
-    if (schema == 1)
-    {
-        restored[10] = restored[11] = 0; // legacy routing sessions reopen with clipping Off
-        found[10] = found[11] = true;
     }
     for (bool valid : found)
         if (!valid)
             return false;
+    if (!apply)
+        return true;
     for (size_t i = 0; i < values.size(); ++i)
-    {
-        auto *p = state.getParameter(ids[i]);
-        p->setValueNotifyingHost(p->convertTo0to1(restored[i]));
-    }
-    const int base = compact ? 520 : 1200;
+        if (values[i])
+        {
+            auto *parameter = state.getParameter(ids[i]);
+            parameter->setValueNotifyingHost(parameter->convertTo0to1(restored[i]));
+        }
+    const int base = isCompact ? 520 : 1200;
     width =
         juce::jlimit(int(base * .8), int(base * 1.75), int(tree.getProperty("editorWidth", base)));
     return true;
