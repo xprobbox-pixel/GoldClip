@@ -35,6 +35,62 @@ int main(int argc, char **argv)
 #else
     setenv("AURUM_PRESET_DIR", testPresetDirectory.getFullPathName().toRawUTF8(), 1);
 #endif
+    {
+        struct Transport final : juce::AudioPlayHead
+        {
+            bool playing = true;
+            double seconds = 90.5;
+            juce::Optional<PositionInfo> getPosition() const override
+            {
+                PositionInfo info;
+                info.setIsPlaying(playing);
+                info.setTimeInSeconds(seconds);
+                return info;
+            }
+        } transport;
+        aurum::PluginProcessor clock(false);
+        clock.setPlayHead(&transport);
+        set(clock, "clipMode", 1);
+        set(clock, "ceiling", -6);
+        clock.prepareToPlay(48000, 512);
+        juce::AudioBuffer<float> audio(2, 512);
+        juce::MidiBuffer midi;
+        for (int c = 0; c < 2; ++c)
+            for (int i = 0; i < 512; ++i)
+                audio.setSample(c, i, 1.2f);
+        clock.processBlock(audio, midi);
+        auto measurement = clock.telemetry.analysis();
+        check(measurement.clip > 7 && measurement.seconds >= 90.5 && measurement.seconds < 90.52,
+              "Clip Clock tracks actual stage attenuation and playing DAW position with the editor "
+              "closed");
+        transport.playing = false;
+        for (int c = 0; c < 2; ++c)
+            for (int i = 0; i < 512; ++i)
+                audio.setSample(c, i, 2.f);
+        clock.processBlock(audio, midi);
+        measurement = clock.telemetry.analysis();
+        check(measurement.clip > 10 && std::isnan(measurement.seconds),
+              "a larger clip without playing transport has no fabricated timestamp");
+        for (int block = 0; block < 10; ++block)
+        {
+            audio.clear();
+            clock.processBlock(audio, midi);
+        }
+        clock.telemetry.resetMeasurements();
+        audio.clear();
+        clock.processBlock(audio, midi);
+        measurement = clock.telemetry.analysis();
+        check(measurement.clip == 0 && std::isnan(measurement.seconds) &&
+                  std::isnan(measurement.inputLufs),
+              "measurement reset clears Clip Clock and restarts the full loudness window");
+        set(clock, "input", 12);
+        for (int c = 0; c < 2; ++c)
+            for (int i = 0; i < 512; ++i)
+                audio.setSample(c, i, .375f);
+        clock.processBlockBypassed(audio, midi);
+        check(audio.getSample(0, 511) == .375f && audio.getSample(1, 511) == .375f,
+              "host bypass selects exact compensated dry through the full product wrapper");
+    }
     // Processors must outlive all editors and parameter attachments.
     auto master = std::make_unique<aurum::PluginProcessor>(false),
          restored = std::make_unique<aurum::PluginProcessor>(false),
