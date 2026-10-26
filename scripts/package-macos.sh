@@ -33,7 +33,19 @@ for variant in Master Track; do
    codesign --verify --all-architectures --deep --strict "$destination"
   done
   id="$prefix.$variant.$format";package="$variant-$format.pkg"
-  pkgbuild --root "$root" --install-location "$location" --identifier "$id" --version "$version" "$work/$package"
+  info="$work/components-$variant-$format.plist"
+  pkgbuild --analyze --root "$root" "$info"
+  python3 - "$info" <<'PYINFO'
+import plistlib,sys
+path=sys.argv[1]
+with open(path,'rb') as stream: components=plistlib.load(stream)
+for component in components:
+ component['BundleIsRelocatable']=False
+ component['BundleIsVersionChecked']=False
+ component['BundleOverwriteAction']='upgrade'
+with open(path,'wb') as stream: plistlib.dump(components,stream)
+PYINFO
+  pkgbuild --root "$root" --component-plist "$info" --install-location "$location" --identifier "$id" --version "$version" "$work/$package"
   echo "<choice id=\"$variant-$format\" title=\"$variant $format\" start_selected=\"true\"><pkg-ref id=\"$id\"/></choice>" >> "$xml"
   echo "<pkg-ref id=\"$id\" version=\"$version\">$package</pkg-ref>" >> "$xml"
  done

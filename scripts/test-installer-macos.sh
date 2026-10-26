@@ -7,7 +7,8 @@ for variant in Master Track; do
  for format in VST3 AU Standalone; do
   case "$format" in VST3) location='/Library/Audio/Plug-Ins/VST3';extension=vst3;; AU) location='/Library/Audio/Plug-Ins/Components';extension=component;; Standalone) location='/Applications';extension=app;; esac
   bundle="$location/AURUM CLIP $variant.$extension"
-  test -d "$bundle"
+  echo "Verifying installed payload $bundle"
+  test -d "$bundle" || { echo "Missing installed bundle: $bundle" >&2; exit 1; }
   cmp "$bundle/Contents/MacOS/AURUM CLIP $variant" "dist/$variant/$format/AURUM CLIP $variant.$extension/Contents/MacOS/AURUM CLIP $variant"
   codesign --verify --all-architectures --deep --strict "$bundle"
   sudo rm -rf "$bundle"
