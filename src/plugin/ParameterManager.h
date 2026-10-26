@@ -5,7 +5,7 @@ namespace aurum
 {
 class ParameterManager
 {
-    std::array<std::atomic<float> *, 10> values{};
+    std::array<std::atomic<float> *, 12> values{};
 
   public:
     juce::AudioProcessorValueTreeState state;

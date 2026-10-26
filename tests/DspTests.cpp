@@ -1,3 +1,4 @@
+#include "dsp/ClipperEngine.h"
 #include "dsp/ProcessingEngine.h"
 #include <array>
 #include <cstdlib>
@@ -210,12 +211,55 @@ void telemetry()
     t.pop(e);
     near(e.inputMin, .5, 1e-7, "envelope minimum retains DC offset");
 }
+void clipCurves()
+{
+    for (auto mode : {aurum::ClipMode::hard, aurum::ClipMode::classic, aurum::ClipMode::modern})
+        for (double db : {-36., -18., -6., 0.})
+        {
+            const double limit = aurum::gain(db);
+            double previous = 0;
+            bool monotonic = true, odd = true, bounded = true, identity = true;
+            for (int i = 0; i <= 20000; ++i)
+            {
+                const double x = 2.0 * limit * i / 20000;
+                const double y = aurum::clipSample(x, limit, mode);
+                monotonic = monotonic && y + 1e-14 >= previous;
+                odd = odd && std::abs(y + aurum::clipSample(-x, limit, mode)) < 1e-14;
+                bounded = bounded && y <= limit + 1e-14;
+                if (x <= limit * .49)
+                    identity = identity && y == x;
+                previous = y;
+            }
+            check(monotonic && odd && bounded && identity,
+                  "curve monotonicity, odd symmetry, bounds and linear region");
+            near(aurum::clipSample(10 * limit, limit, mode), limit, 1e-14,
+                 "curve saturates at requested ceiling");
+        }
+    check(aurum::clipSample(.9, 1, aurum::ClipMode::classic) !=
+              aurum::clipSample(.9, 1, aurum::ClipMode::modern),
+          "Classic and Modern use distinct knees");
+    near(aurum::clipSample(.9, 1, aurum::ClipMode::hard), .9, 0, "hard clip exact below threshold");
+    near(aurum::clipSample(2, 1, aurum::ClipMode::off), 2, 0, "Off never clips");
+    near(aurum::clipSample(std::numeric_limits<double>::infinity(), 1, aurum::ClipMode::hard), 0, 0,
+         "invalid clip input sanitised");
+    for (auto mode : {aurum::ClipMode::classic, aurum::ClipMode::modern})
+    {
+        const double knee = mode == aurum::ClipMode::classic ? .8 : .5, high = 2 - knee, h = 1e-5;
+        near((aurum::clipSample(knee + h, 1, mode) - aurum::clipSample(knee - h, 1, mode)) /
+                 (2 * h),
+             1, 1e-7, "soft knee onset slope continuous");
+        near((aurum::clipSample(high + h, 1, mode) - aurum::clipSample(high - h, 1, mode)) /
+                 (2 * h),
+             0, 1e-7, "soft knee saturation slope continuous");
+    }
+}
 int main()
 {
     routing<float>();
     routing<double>();
     smoothingAndSafety();
     telemetry();
+    clipCurves();
     std::cout << checks << " checks; " << failures << " failures\n";
     return failures ? 1 : 0;
 }

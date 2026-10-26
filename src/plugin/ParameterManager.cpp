@@ -5,8 +5,8 @@ namespace aurum
 {
 namespace
 {
-constexpr const char *ids[]{"input",  "output",  "blend",   "wet",   "dry",
-                            "linked", "wetMute", "dryMute", "delta", "bypass"};
+constexpr const char *ids[]{"input",   "output",  "blend", "wet",    "dry",     "linked",
+                            "wetMute", "dryMute", "delta", "bypass", "ceiling", "clipMode"};
 }
 juce::AudioProcessorValueTreeState::ParameterLayout ParameterManager::layout()
 {
@@ -29,6 +29,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout ParameterManager::layout()
                       std::pair{"bypass", "Bypass"}})
         p.add(std::make_unique<juce::AudioParameterBool>(
             juce::ParameterID{item.first, 1}, item.second, juce::String(item.first) == "linked"));
+    number("ceiling", "Clip Ceiling", -36, 0, 0, "dBFS");
+    p.add(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{"clipMode", 1}, "Clip Mode",
+        juce::StringArray{"Off", "Hard", "Classic", "Modern"}, 0));
     return p;
 }
 ParameterManager::ParameterManager(juce::AudioProcessor &owner)
@@ -45,12 +49,13 @@ Parameters ParameterManager::snapshot() const noexcept
     { return std::round(double(values[index]->load()) * 100.0) / 100.0; };
     return validated({onGrid(0), onGrid(1), onGrid(2) / 100.0, onGrid(3), onGrid(4),
                       values[5]->load() > .5f, values[6]->load() > .5f, values[7]->load() > .5f,
-                      values[8]->load() > .5f, values[9]->load() > .5f});
+                      values[8]->load() > .5f, values[9]->load() > .5f, onGrid(10),
+                      int(values[11]->load())});
 }
 void ParameterManager::save(juce::MemoryBlock &bytes, bool compact, int width)
 {
     auto tree = state.copyState();
-    tree.setProperty("schema", 1, nullptr);
+    tree.setProperty("schema", 2, nullptr);
     tree.setProperty("variant", compact ? "track" : "master", nullptr);
     tree.setProperty("editorWidth", width, nullptr);
     auto xml = tree.createXml();
@@ -64,12 +69,13 @@ bool ParameterManager::restore(const void *bytes, int size, bool compact, int &w
     if (!xml || !xml->hasTagName("AurumState"))
         return false;
     auto tree = juce::ValueTree::fromXml(*xml);
-    if (int(tree.getProperty("schema", 0)) != 1 ||
+    const int schema = int(tree.getProperty("schema", 0));
+    if ((schema != 1 && schema != 2) ||
         tree.getProperty("variant").toString() != (compact ? "track" : "master"))
         return false;
     // Validate the complete transaction before touching any live parameter.
-    std::array<float, 10> restored{};
-    std::array<bool, 10> found{};
+    std::array<float, 12> restored{};
+    std::array<bool, 12> found{};
     for (auto child : tree)
     {
         const auto id = child.getProperty("id").toString();
@@ -90,6 +96,11 @@ bool ParameterManager::restore(const void *bytes, int size, bool compact, int &w
                 restored[i] = juce::jlimit(range.start, range.end, v);
                 found[i] = true;
             }
+    }
+    if (schema == 1)
+    {
+        restored[10] = restored[11] = 0; // legacy routing sessions reopen with clipping Off
+        found[10] = found[11] = true;
     }
     for (bool valid : found)
         if (!valid)

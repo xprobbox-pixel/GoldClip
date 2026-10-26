@@ -1,17 +1,24 @@
 #pragma once
 #include "ParameterManager.h"
-#include "dsp/ProcessingEngine.h"
+#include "dsp/OversampledEngine.h"
 namespace aurum
 {
 class PluginProcessor final : public juce::AudioProcessor
 {
     bool compact;
-    ProcessingEngine floatEngine, doubleEngine;
+    OversampledEngine<float> floatEngine;
+    OversampledEngine<double> doubleEngine;
     template <class T> void process(juce::AudioBuffer<T> &b, bool bypassed)
     {
         juce::ScopedNoDenormals noDenormals;
         auto p = parameters.snapshot();
-        auto &engine = std::is_same_v<T, float> ? floatEngine : doubleEngine;
+        auto &engine = [&]() -> auto &
+        {
+            if constexpr (std::is_same_v<T, float>)
+                return floatEngine;
+            else
+                return doubleEngine;
+        }();
         engine.process(b.getArrayOfWritePointers(), unsigned(b.getNumChannels()), b.getNumSamples(),
                        p, &telemetry, bypassed);
     }
@@ -88,7 +95,7 @@ class PluginProcessor final : public juce::AudioProcessor
     void setCurrentProgram(int) override {}
     const juce::String getProgramName(int) override
     {
-        return "Foundation Default";
+        return "Clip Off Default";
     }
     void changeProgramName(int, const juce::String &) override {}
     void getStateInformation(juce::MemoryBlock &b) override

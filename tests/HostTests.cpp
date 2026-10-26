@@ -1,3 +1,4 @@
+#include "ClippingTests.h"
 #include "plugin/PluginProcessor.h"
 #include <iostream>
 #include <thread>
@@ -24,11 +25,17 @@ int main(int argc, char **argv)
     auto master = std::make_unique<aurum::PluginProcessor>(false),
          restored = std::make_unique<aurum::PluginProcessor>(false),
          track = std::make_unique<aurum::PluginProcessor>(true);
+    clipping_tests::engineTests<float>(check);
+    clipping_tests::engineTests<double>(check);
+    clipping_tests::filterDesignTests(check);
+    clipping_tests::aliasTest(check);
     const auto neutral = master->parameters.snapshot();
     check(neutral.inputDb == 0 && neutral.outputDb == 0 && neutral.wetDb == 0 && neutral.blend == 1,
           "neutral APVTS controls map exactly to the declared parameter grid");
     set(*master, "input", 5.25f);
     set(*master, "blend", 34);
+    set(*master, "clipMode", 2);
+    set(*master, "ceiling", -9.5f);
     master->editorWidth = 1500;
     juce::MemoryBlock state;
     master->getStateInformation(state);
@@ -36,6 +43,9 @@ int main(int argc, char **argv)
     check(std::abs(restored->parameters.snapshot().inputDb - 5.25) < .001 &&
               std::abs(restored->parameters.snapshot().blend - .34) < .001,
           "APVTS state round trip");
+    check(restored->parameters.snapshot().clipMode == 2 &&
+              restored->parameters.snapshot().ceilingDb == -9.5,
+          "clipping state round trip");
     check(restored->editorWidth == 1500, "editor width recall");
     track->setStateInformation(state.getData(), int(state.getSize()));
     check(track->parameters.snapshot().inputDb == 0, "cross-variant state rejected");
@@ -56,8 +66,23 @@ int main(int argc, char **argv)
     restored->setStateInformation(invalid.getData(), int(invalid.getSize()));
     check(std::abs(restored->parameters.snapshot().inputDb - 5.25) < .001,
           "nonfinite state rejected transactionally");
-    check(master->supportsDoublePrecisionProcessing() && master->getLatencySamples() == 0,
-          "double processing and zero reported latency");
+    // Phase 1 sessions migrate explicitly to Off, even over an engaged clipper.
+    auto legacy = juce::AudioProcessor::getXmlFromBinary(state.getData(), int(state.getSize()));
+    legacy->setAttribute("schema", 1);
+    for (auto *child = legacy->getFirstChildElement(); child != nullptr;)
+    {
+        auto *next = child->getNextElement();
+        if (child->getStringAttribute("id") == "clipMode" ||
+            child->getStringAttribute("id") == "ceiling")
+            legacy->removeChildElement(child, true);
+        child = next;
+    }
+    juce::AudioProcessor::copyXmlToBinary(*legacy, invalid);
+    restored->setStateInformation(invalid.getData(), int(invalid.getSize()));
+    check(restored->parameters.snapshot().clipMode == 0 &&
+              restored->parameters.snapshot().ceilingDb == 0,
+          "schema 1 migrates to clipping Off");
+    check(master->supportsDoublePrecisionProcessing(), "double processing supported");
     for (int channels : {1, 2, 4})
     {
         auto layout = master->getBusesLayout();
@@ -72,21 +97,26 @@ int main(int argc, char **argv)
     // Explicit processor integration, not only direct engine tests.
     set(*master, "input", 0);
     set(*master, "blend", 100);
+    set(*master, "clipMode", 0);
     master->prepareToPlay(48000, 17);
+    const int latency = master->getLatencySamples();
+    check(latency > 0 && latency < 257, "host reports oversampler integer latency");
     juce::AudioBuffer<float> b(2, 257);
     juce::MidiBuffer midi;
     for (int c = 0; c < 2; ++c)
         for (int i = 0; i < b.getNumSamples(); ++i)
             b.setSample(c, i, c == 0 ? .2f : -.3f);
     master->processBlock(b, midi);
-    check(std::abs(b.getSample(0, 0) - .2f) < 1e-7 && std::abs(b.getSample(1, 0) + .3f) < 1e-7,
+    check(std::abs(b.getSample(0, latency) - .2f) < 1e-7 &&
+              std::abs(b.getSample(1, latency) + .3f) < 1e-7,
           "variable block host routing");
-    juce::AudioBuffer<double> d(2, 17);
+    juce::AudioBuffer<double> d(2, 257);
     for (int c = 0; c < 2; ++c)
-        for (int i = 0; i < 17; ++i)
+        for (int i = 0; i < d.getNumSamples(); ++i)
             d.setSample(c, i, .123456789012);
     master->processBlock(d, midi);
-    check(std::abs(d.getSample(0, 0) - .123456789012) < 1e-14, "64-bit host processing precision");
+    check(std::abs(d.getSample(0, latency) - .123456789012) < 1e-14,
+          "64-bit host processing precision");
     auto editor = std::unique_ptr<juce::AudioProcessorEditor>(restored->createEditor());
     check(editor->getWidth() == 1500 && editor->getHeight() == 750,
           "saved editor dimensions respected");
@@ -102,6 +132,8 @@ int main(int argc, char **argv)
         directory.createDirectory();
         for (auto *processor : {master.get(), track.get()})
         {
+            set(*processor, "clipMode", 2);
+            set(*processor, "ceiling", -12);
             processor->prepareToPlay(48000, 256);
             juce::AudioBuffer<float> audio(2, 256);
             for (int block = 0; block < 120; ++block)

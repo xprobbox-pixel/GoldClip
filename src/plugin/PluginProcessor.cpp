@@ -21,7 +21,7 @@ void PluginProcessor::prepareToPlay(double rate, int)
     const auto p = parameters.snapshot();
     floatEngine.prepare(rate, unsigned(getTotalNumInputChannels()), p);
     doubleEngine.prepare(rate, unsigned(getTotalNumInputChannels()), p);
-    setLatencySamples(0);
+    setLatencySamples(floatEngine.latencySamples());
 }
 juce::AudioProcessorEditor *PluginProcessor::createEditor()
 {
