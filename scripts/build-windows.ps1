@@ -9,6 +9,7 @@ Invoke-Checked cmake @('--build','--preset','windows-x64','--parallel',"$Jobs")
 Invoke-Checked ctest @('--preset','windows-x64','--verbose')
 New-Item -ItemType Directory -Force dist/validation | Out-Null
 Invoke-Checked './build/windows-x64/AurumHostTests_artefacts/Release/AurumHostTests.exe' @('--render',"$PWD/dist/validation")
+Invoke-Checked './build/windows-x64/AurumHostTests_artefacts/Release/AurumHostTests.exe' @('--measure',"$PWD/dist/measurements")
 foreach ($variant in @('Master','Track')) {
  foreach ($format in @('VST3','Standalone')) {
   $dest="dist/$variant/$format"

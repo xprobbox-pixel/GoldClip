@@ -8,6 +8,7 @@ cmake --build --preset mac-universal --parallel "${AURUM_JOBS:-4}"
 ctest --preset mac-universal --verbose
 mkdir -p dist/validation
 build/mac-universal/AurumHostTests_artefacts/Release/AurumHostTests --render "$PWD/dist/validation"
+build/mac-universal/AurumHostTests_artefacts/Release/AurumHostTests --measure "$PWD/dist/measurements"
 for variant in Master Track; do
  for format in VST3 AU Standalone; do
   src="build/mac-universal/Aurum${variant}_artefacts/Release/$format"

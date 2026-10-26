@@ -16,6 +16,7 @@ for p in sorted(root.rglob('*')):
     if sys.platform=='darwin' and '/Contents/MacOS/' in str(p):
         record['architectures']=run(['lipo','-archs',str(p)])
         record['signature']=run(['codesign','-dv',str(p)])
+    if sys.platform=='darwin' and p.suffix=='.pkg':record['installer_signature']=run(['pkgutil','--check-signature',str(p)])
     files.append(record)
 root.mkdir(parents=True,exist_ok=True)
-(root/'manifest.json').write_text(json.dumps({'product':'AURUM CLIP','phase':'2A','version':version,'source_commit':run(['git','rev-parse','HEAD'])['stdout'],'release_signing':'not performed','notarisation':'not performed','host':sys.platform,'files':files},indent=2)+'\n')
+(root/'manifest.json').write_text(json.dumps({'product':'AURUM CLIP','phase':'complete-development','version':version,'source_commit':run(['git','rev-parse','HEAD'])['stdout'],'release_signing':('credentials supplied; inspect per-artifact verification' if __import__('os').environ.get('AURUM_APP_SIGN_ID') or __import__('os').environ.get('AURUM_SIGN_PFX') else 'not performed; unsigned/development'),'notarisation':'not performed','host':sys.platform,'files':files},indent=2)+'\n')

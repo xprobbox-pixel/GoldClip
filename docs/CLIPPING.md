@@ -1,4 +1,6 @@
-# Phase 2A clipping contract
+# Phase 2A clipping contract (historical)
+
+The transfer curves remain in use. Current selectable quality, Gold/Alchemy routing and explicit wet guard are documented in ARCHITECTURE.md and the release report. The fixed-quality/no-guard boundaries below describe Phase 2A artifacts, not the final product.
 
 These are original symmetric memoryless transfer functions. Hard, Classic and Modern do not claim to reproduce Schwabe Digital's proprietary implementation or its sound. Gold, Alchemy and Box Tone are not part of this phase.
 

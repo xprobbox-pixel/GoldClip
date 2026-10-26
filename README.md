@@ -1,80 +1,83 @@
-# AURUM CLIP — Phase 2A clipping
+# AURUM CLIP — GoldClip project
 
-Independent C++20/JUCE audio plugin project in the GoldClip repository. AURUM CLIP is the provisional original product name; it is not affiliated with Schwabe Digital. Published Gold Clip behavior informs the roadmap, not a claim of copied DSP or sonic equivalence.
+Independent C++20/JUCE stereo mastering processor, originally specified as a Gold Clip-inspired workflow. AURUM CLIP is original branding and independently designed DSP; it is unaffiliated with Schwabe Digital and makes no claim of copied algorithms or sonic identity. Version 1.0.0 is undergoing final native validation and installer testing; see [release validation](docs/RELEASE-VALIDATION.md) for actual results and limitations.
 
-**Phase 2A adds real clipping to the tested routing foundation.** Off, Hard, Classic and Modern modes have distinct original transfer curves, a smoothed -36 to 0 dBFS clip ceiling, fixed-quality FIR oversampling and compensated dry/wet/bypass paths. Existing routing, automation, stereo waveform telemetry and saved UI size remain functional. Gold, Alchemy, Box Tone, selectable quality/LPF, LUFS, presets/A-B and installers belong to later phases; they are not exposed as working controls. This is an independent implementation, not a proprietary algorithm recreation.
+## Master and Track
 
-## Products and formats
+**Master:** landscape 1200×600 editor, Gold, clipping, dynamic Alchemy, linear-phase FIR Box Tone, stereo input/output peak ladders, short-term LUFS, stage Clip Clock, waveform, independent wet/dry mixer, trim linking, presets and A/B.
 
-- **AURUM CLIP Master:** landscape 1200×600 editor.
-- **AURUM CLIP Track:** compact 520×600 editor, shared DSP; no Master-only controls.
-- Windows 10/11 x64: VST3 + standalone for each variant.
-- macOS 11+ deployment target, Universal arm64/x86_64: VST3 + AU + standalone for each variant. Runtime compatibility must be tested on the actual oldest supported OS before release.
-- Matched mono/stereo layouts only; native 32/64-bit floating point processing. Automated core routing cases cover 44.1/48/88.2/96/192 kHz; clipping tests also cover these rates.
-- Original vector interface scales 80–175%, with saved host-state size. No borrowed logos or artwork.
+**Track:** compact 520×600 editor sharing the Gold/clip/quality/routing engines. It omits Alchemy and Box Tone from both the editor and host parameter list. It also omits their FIR processing latency/CPU work. Independent wet/dry controls and Delta are available in Settings. Both editors scale 80–175%, including host dragging, keyboard-editable values, double-click/Alt-click defaults and named controls/tooltips.
 
-## Audio behavior
+Formats: Windows 10/11 x64 VST3 + standalone; macOS Universal arm64/x86_64 AU + VST3 + standalone. Matched mono/stereo, native float/double, tested sample-rate matrix 44.1/48/88.2/96/192 kHz. Deployment minimum macOS 11 is a build target; physical oldest-OS validation is distinct from compilation.
 
-Original input → split: dry receives latency compensation only; wet → Input Trim → oversampled Clipper → reconstruction → mixer. Combine paths → Output Trim → Output. Linked mode uses amplitude gains `wet=blend`, `dry=1-blend`. Unlinked mode permits additive dB gains. Delta outputs **aligned wet minus original dry** independently of normal mixer gains/mutes, followed by Output Trim. It affects rendered audio. Plugin bypass crossfades to delayed unity dry in 20 ms; host bypass immediately selects that same delayed dry path. Off preserves bit-exact delayed unity at neutral settings. The host receives the actual integer oversampling latency, constant across clipping mode changes at a given sample rate.
+## Processing and controls
 
-Fixed High uses 4× at 44.1/48 kHz, 2× at 88.2/96 kHz and 1× above 96 kHz. These are processing factors, not selectable quality modes. The FIR has passband/phase limitations, including fractional latency compensation. See [clipping design and measured boundaries](docs/CLIPPING.md). **The stage ceiling is not a final sample-peak or true-peak guarantee:** reconstruction, mixing and output gain can exceed it. There is no hidden postmix limiter.
+Original input splits into an untouched, delayed dry path and:
 
-Standalone JUCE input-feedback protection mutes input on first launch; use Options / audio settings to configure devices deliberately.
+`Box Tone (Master) → Input Trim → Oversampling → Clipper → Alchemy (Master) → Gold → optional Clip Filter → Reconstruction → optional wet sample-peak guard → Mixer → Output Trim`.
 
-## Dependencies and reproducible setup
+- **Clipper:** Off, Hard, Classic, Modern; smoothed ceiling -36 to 0 dBFS. Classic/Modern are distinct smooth monotonic knees. Off leaves Gold/Alchemy usable and warns when held input exceeds the chosen ceiling.
+- **Gold:** separate Modern (0–2.5 dB) and Classic (0–6 dB) parameter/curve families. Symmetric instantaneous low-level enhancement withdraws towards the ceiling. Classic curvature varies with amount. Unity compensates by the selected Gold dB amount independently of the mixer/trims.
+- **Alchemy:** Master-only, 0–2 dB, stereo-linked amplitude modulation of a broad upper-frequency contour centered near 6.5 kHz, with high-frequency recovery. Powerful low-frequency events can modulate simultaneous highs. It is not a fixed EQ or conventional slow compressor.
+- **Box Tone:** Master-only Flat/Classic/Modern, 129-tap symmetric FIR, measured subtle contours. Flat uses an exact delayed bypass. The fixed 64-sample tone delay remains in all Master modes to permit smooth switching.
+- **Quality:** independent realtime/offline High 4×/2×, Pristine 8×/4×, Extra Pristine 16×/8× at 44.1–48/88.2–96 kHz. At 192 kHz the factors are 1×/2×/4×. Linear FIR and minimum-phase IIR are selectable. Six graphs are prepared outside the callback; only the active graph normally runs. New graphs warm, then crossfade over 50 ms. Fixed maximum PDC at a given rate/variant avoids host latency changes during switching. FIR integer compensation and IIR phase mean frequency-dependent dry/wet differences remain possible; Delta exposes the actual difference.
+- **Clip Filter:** optional oversampled one-pole low-pass, 4–22 kHz setting capped at 45% of host sample rate. See measured response/limits; it is not an undocumented change to the clipper.
+- **Wet guard:** explicit 32-sample lookahead, stereo-linked sample-peak gain control with immediate reduction / 20 ms release. Applies to reconstructed wet only when clipping is enabled; bypassing it releases smoothly. **It does not guarantee inter-sample true peaks or limit the final parallel sum.** Mixing, Output Trim and unprocessed dry can exceed the stage ceiling. Disable it to inspect raw reconstruction overshoot.
+- **Mixer:** linked linear wet/dry blend, or independent -60 to +6 dB levels and mutes. Delta substitutes aligned wet minus original dry before final Output Trim.
+- **Trims:** -12 to +12 dB. Link preserves the current sum when enabled from the UI; effective output is linked offset minus input. Shift-drag Input adjusts the offset. Settings provides exact offset entry; DAW automation can address Input and Offset explicitly. All audio controls are smoothed. Plugin bypass crossfades over 20 ms; host bypass immediately returns the same delayed unity dry input.
 
-CMake ≥3.24, C++20, Git, Python 3.9+. Tested tool versions are recorded in validation reports. CI pins CMake 3.31.6 and Ninja 1.11.1.4. Windows requires Visual Studio 2022 Desktop C++ and Windows SDK; macOS requires Xcode/Command Line Tools with Universal SDK support and Ninja. Native CI never treats one OS as validation for another.
+The standalone exposes JUCE audio-device settings through its Options menu. Input is muted on first launch to prevent unexpected microphone-to-speaker monitoring. Deliberately select devices and enable input. No processing changes based on offline rendering except the explicitly selected offline oversampling quality. Offline quality changes on an already-running instance use the documented warmed crossfade; a freshly prepared render uses its selected graph from the first block.
 
-JUCE **9.0.4** is pinned by immutable commit in `cmake/Identity.cmake`. CMake FetchContent fetches it automatically. To use an existing checkout, set `JUCE_SOURCE_DIR` with the scripts or configure with `-DJUCE_SOURCE_DIR=/absolute/JUCE`. The checkout Git HEAD must match the pinned hash; uncommitted dependency edits must be reviewed separately. The offline **dsp-only** preset needs no JUCE or network. Central identity/version/plugin codes are in the same CMake file. These are development defaults; preserve plugin codes after sessions are created.
+## Metering, transport and display
+
+Short-term loudness uses BS.1770 K weighting, mono/stereo channel-energy weighting and a full 3-second window. Startup/reset displays `—`; valid silence displays `−∞`. This is ungated short-term LUFS, not integrated programme loudness. Input is measured on the original compensated input; output after the final mix/trim. Measurement continues on actual callbacks with the editor closed and while transport is stopped; no synthetic values or transport-time advance is invented.
+
+Clip Clock holds the largest measured transfer-stage attenuation and DAW timeline seconds where playing transport supplies them. Standalone/stopped/missing transport shows `—` for time. It persists across stops/loops until Reset. The event is timestamped at the oversampled processing position; filter pipeline delay gives a small, documented timing offset, particularly with minimum phase. It is a stage diagnostic, not an exact sample locator or output true-peak meter.
+
+Meter scales +6/−36, +4/−24 and +2/−12 dBFS cycle by double-clicking the displayed scale or through Settings. Grey waveform envelopes are actual original input; dark/gold contours are actual processed output; blue guides are the stage ceiling. Peak-preserving 64-sample envelopes feed a bounded lock-free queue. History is 25,600 samples, not a fixed number of seconds. Waveform Off stops graphical capture; meters/analysis continue. Reset clears held peaks, overload, Clip Clock and loudness startup. Colour warnings also include text.
+
+## Presets, A/B and persistence
+
+Four factory presets are actual parameter states. User presets save atomically under the OS user application-data `AurumClip/Master` or `Track` directory. Header arrows navigate; Save creates/replaces a named user preset; Settings renames/deletes user presets or makes the current state the default. A/B initially follows the current edits; selecting the other state establishes independent memories. Copy works in both directions. Both memories, active state and tracking status persist in DAW state and user presets.
+
+Stable APVTS IDs and schema 3 validate complete transactions, finite values, variants and future versions. Schema 1/2 sessions migrate with new processing disabled/defaulted. Cross-variant snapshots are rejected. UI size is saved in host state and preferences; tooltips and meter scale have persistence. No audio or telemetry is stored externally. WAV/CSV exports exist only in explicitly invoked tests/measurement tools.
+
+## Build and test
+
+Requirements: native C++20 compiler/SDK, CMake ≥3.24, Git; Python 3.12 for the full plotting workflow; Ninja on macOS; Visual Studio 2022 Desktop C++ on Windows; Inno Setup 6 for Windows packaging. CI pins CMake 3.31.6, Ninja 1.11.1.4, NumPy 2.2.6 and Matplotlib 3.10.3. JUCE 9.0.4 is pinned by immutable commit in `cmake/Identity.cmake`. CMake fetches it automatically, or accepts `JUCE_SOURCE_DIR` at that exact Git revision. The framework-independent core tests need no JUCE/network.
 
 ```sh
-python3 -m pip install cmake==3.31.6 ninja==1.11.1.4
-# Framework-independent tests:
+python3 -m pip install cmake==3.31.6 ninja==1.11.1.4 numpy==2.2.6 matplotlib==3.10.3
 cmake --preset dsp-only
 cmake --build --preset dsp-only
 ctest --preset dsp-only --verbose
-# macOS native Universal build, tests, screenshots and binary staging:
-bash scripts/build-macos.sh
-# Or local pinned JUCE checkout:
-JUCE_SOURCE_DIR=/absolute/JUCE bash scripts/build-macos.sh
+# Native macOS Universal: compile, test, render UI and measure DSP, stage binaries:
+JUCE_SOURCE_DIR=/absolute/pinned/JUCE bash scripts/build-macos.sh
+python3 scripts/plot-measurements.py dist/measurements
+bash scripts/package-macos.sh
 ```
 
 ```powershell
-# Native Windows x64, Developer PowerShell:
-python -m pip install cmake==3.31.6 ninja==1.11.1.4
+# Native Windows x64 Developer PowerShell:
+python -m pip install cmake==3.31.6 ninja==1.11.1.4 numpy==2.2.6 matplotlib==3.10.3
+$env:JUCE_SOURCE_DIR='C:/src/pinned-JUCE' # optional; unset to fetch
 ./scripts/build-windows.ps1
-# Optional local dependency:
-$env:JUCE_SOURCE_DIR='C:/src/JUCE'
-./scripts/build-windows.ps1
+python scripts/plot-measurements.py dist/measurements
+./scripts/package-windows.ps1
 ```
 
-If a locally mixed CLT installation selects stale libc++ headers, see the environment-specific workaround in [reference/toolchain notes](docs/REFERENCES.md); native CI uses matched compiler/SDK environments.
+Do not point JUCE_SOURCE_DIR at another revision. Toolchain-specific CLT/libc++ notes are in [references](docs/REFERENCES.md). Native CI runs tests, pluginval, strict auval, architecture checks, measured plots, installers and ephemeral install/uninstall checks. A build on one OS does not validate the other. Manual DAW/hardware/oldest-OS checks are listed separately in the release report.
 
-Native scripts run DSP and host/state tests, render real editor snapshots, and copy compiled products into `dist/{Master,Track}/{VST3,AU,Standalone}` (AU on macOS only). `dist/manifest.json` records source commit, file sizes, SHA-256 hashes and available native header inspection. Ordinary builds are unsigned development artifacts. macOS staging applies ad-hoc development seals after all bundle metadata is generated, then verifies every architecture. This is a local integrity/loader requirement and uses no release credentials. No Developer ID, Authenticode or notarisation is claimed.
+Measurement exports: run `AurumHostTests --measure /absolute/directory`, then the plot script. CSVs contain actual transfer, harmonics, Box Tone, Alchemy, alias and timing results. Sine, deterministic drum, synthetic mix and noise WAVs are generated test material, not commercial reference recordings. `scripts/compare-renders.py reference.wav candidate.wav --output comparison.json` optionally aligns lawful same-input renders and reports gain/residual/peaks; it requires FFmpeg and NumPy. No proprietary reference audio was supplied or sonic calibration claimed.
 
-## Test and CI workflow
+## Installers and release status
 
-`.github/workflows/native.yml` runs native Windows/macOS jobs for pull requests against main, pushes to main and manual dispatch. It builds both variants, executes deterministic DSP and JUCE host integration tests, renders editor snapshots at 80/100/175%, runs pluginval strictness 5 for both VST3s and strict auval for both AUs, verifies macOS architectures and uploads successful native products. Failures upload diagnostic logs separately. It does not package or sign releases. Native validation tools are not substitutes for manual DAW/audio-device tests.
+See [packaging instructions](packaging/README.md) for exact paths, selectable components, uninstall and optional signing/notarisation secrets. Ordinary CI produces unsigned Windows EXE and ad-hoc-development macOS PKG installers. Signing is a separate manual workflow; no credentials are committed. Missing credentials do not prevent development installers but do prevent a signed/notarised release claim.
 
-The DSP tests cover gain accuracy, mono/stereo independence, five sample rates, variable blocks, both sample precisions, true dry path, linked/unlinked mixing, mutes, Delta nulling, bypass, smoothing, invalid samples/parameters, allocation tracking, min/max envelopes and overflow. Host tests exercise parameter/state integration, schema migration/rejection, clipping controls, size recall and both sample precisions. Numerical tolerances live beside assertions. Current measurements are in [Phase 2A validation](docs/PHASE2-VALIDATION.md); [Phase 1 validation](docs/VALIDATION.md) is historical. See [architecture](docs/ARCHITECTURE.md) and [actual validation](docs/VALIDATION.md).
+Build outputs are under `dist`; release deliverables include source archives, binaries, installers, per-file SHA-256 manifests, logs and validation reports. No AAX is built without an authorised SDK. No Linux build is used to certify native outputs.
 
-## Development workflow
+## Licensing and development
 
-`main` is stable. Phase 1 remains in PR #1; Phase 2A builds on it in `develop/phase-2-clipping`; completed modules are committed separately and reviewed through a pull request. Do not merge automatically. Preserve functioning code and stable state/parameter IDs. Build outputs are ignored. Dependency updates require a new reviewed pin and native validation.
+JUCE licensing must suit the intended distribution. [Third-party notices](docs/THIRD-PARTY-NOTICES.md) document dependencies. The owner has not chosen a public source-distribution licence. This repository includes no copied protected artwork, proprietary DSP code or original reference audio.
 
-## Roadmap and acceptance boundaries
-
-1. **Foundation (PR #1):** project/variants, signal routing, parameters/state, telemetry, original functional editor, deterministic tests, native CI.
-2. **Clipping and oversampling:** Phase 2A implements curves/Off, ceiling, fixed FIR quality, dry compensation and deterministic measurements. Phase 2B will add quality/filter selection, LPF and a broader alias/overshoot/CPU acceptance matrix. No true-peak guarantee without evidence.
-3. **Gold:** distinct monotonic Modern/Classic families tied to ceiling, unity compensation, transfer/harmonic plots and legitimately obtained reference calibration.
-4. **Alchemy and Box Tone:** Master-only dynamic frequency shaping and precision contour filters, response/phase/stereo validation.
-5. **Product workflow:** calibrated loudness, clip clock using real transport, final waveform semantics and layout, trim linking/offset, presets and A/B, global preferences.
-6. **Release:** manual multi-DAW tests, CPU/automation stress, installers, dependency notices, optional signing/notarisation in a separate credentialled workflow.
-
-## Install/uninstall development binaries
-
-Close hosts before copying bundles. Windows VST3: `%CommonProgramFiles%/VST3/`; macOS VST3: `~/Library/Audio/Plug-Ins/VST3/`; macOS AU: `~/Library/Audio/Plug-Ins/Components/`. Standalone apps can run from a development folder; configure audio devices through their Options menu. Unsigned/unnotarised builds may be rejected by OS security policy. No privileged installation or security-policy changes are performed by this repository. Remove only the copied AURUM CLIP bundles to uninstall. No installer/uninstaller exists yet.
-
-## Licensing and references
-
-[Dependency notices](docs/THIRD-PARTY-NOTICES.md) include the explicit JUCE licensing obligation. The owner has not selected a source distribution licence. [Official reference review](docs/REFERENCES.md) records the fetched manual's date and the unresolved version discrepancy in the supplied brief. No proprietary equations, brand assets or licensed reference audio are committed.
+`main` remains stable; development changes use PRs and descriptive commits. Prior phase reports are historical. The final product's equations, limitations, tolerances, actual validation and signing status must be reviewed before any commercial production-ready claim.

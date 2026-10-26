@@ -1,0 +1,95 @@
+name: Optional signed release
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Native signing platform
+        type: choice
+        options: [macOS, Windows]
+        required: true
+permissions:
+  contents: read
+jobs:
+  signed:
+    environment: release
+    strategy:
+      matrix:
+        include:
+          - platform: macOS
+            os: macos-14
+          - platform: Windows
+            os: windows-2022
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        if: inputs.platform == matrix.platform
+      - uses: actions/setup-python@v5
+        if: inputs.platform == matrix.platform
+        with:
+          python-version: '3.12'
+      - name: Build tools
+        if: inputs.platform == matrix.platform
+        run: python -m pip install cmake==3.31.6 ninja==1.11.1.4
+      - name: Import Apple certificates and notary credentials
+        if: inputs.platform == 'macOS' && matrix.platform == 'macOS'
+        env:
+          CERTIFICATES: ${{ secrets.APPLE_CERTIFICATES_P12_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          test -n "$CERTIFICATES" && test -n "$APPLE_ID" && test -n "$APPLE_APP_PASSWORD" && test -n "$APPLE_TEAM_ID"
+          keychain="$RUNNER_TEMP/aurum-signing.keychain-db"
+          password=$(uuidgen)
+          echo "::add-mask::$password"
+          echo "$CERTIFICATES" | base64 --decode > "$RUNNER_TEMP/certificates.p12"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$RUNNER_TEMP/certificates.p12" -P "$CERTIFICATE_PASSWORD" -A -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain"
+          security list-keychains -d user -s "$keychain" "$HOME/Library/Keychains/login.keychain-db"
+          xcrun notarytool store-credentials aurum-release --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID" --keychain "$keychain"
+      - name: Build and sign macOS package
+        if: inputs.platform == 'macOS' && matrix.platform == 'macOS'
+        env:
+          AURUM_APP_SIGN_ID: ${{ secrets.APPLE_APPLICATION_IDENTITY }}
+          AURUM_INSTALLER_SIGN_ID: ${{ secrets.APPLE_INSTALLER_IDENTITY }}
+          AURUM_NOTARY_PROFILE: aurum-release
+        run: |
+          test -n "$AURUM_APP_SIGN_ID" && test -n "$AURUM_INSTALLER_SIGN_ID"
+          bash scripts/build-macos.sh
+          bash scripts/package-macos.sh
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: inputs.platform == 'Windows' && matrix.platform == 'Windows'
+        with:
+          arch: x64
+      - name: Build and sign Windows package
+        if: inputs.platform == 'Windows' && matrix.platform == 'Windows'
+        shell: pwsh
+        env:
+          CERTIFICATE: ${{ secrets.WINDOWS_PFX_BASE64 }}
+          AURUM_SIGN_PASSWORD: ${{ secrets.WINDOWS_PFX_PASSWORD }}
+        run: |
+          if(-not $env:CERTIFICATE){throw 'A Windows signing certificate is required for this workflow'}
+          $env:AURUM_SIGN_PFX=Join-Path $env:RUNNER_TEMP 'aurum-signing.pfx'
+          [IO.File]::WriteAllBytes($env:AURUM_SIGN_PFX,[Convert]::FromBase64String($env:CERTIFICATE))
+          ./scripts/build-windows.ps1
+          ./scripts/package-windows.ps1
+      - uses: actions/upload-artifact@v4
+        if: success() && inputs.platform == matrix.platform
+        with:
+          name: AURUM-CLIP-signed-${{ matrix.platform }}
+          path: dist
+      - name: Remove Apple signing material
+        if: always() && inputs.platform == 'macOS' && matrix.platform == 'macOS'
+        run: |
+          security delete-keychain "$RUNNER_TEMP/aurum-signing.keychain-db" || true
+          rm -f "$RUNNER_TEMP/certificates.p12"
+      - name: Remove Windows signing material
+        if: always() && inputs.platform == 'Windows' && matrix.platform == 'Windows'
+        shell: pwsh
+        run: Remove-Item (Join-Path $env:RUNNER_TEMP 'aurum-signing.pfx') -ErrorAction SilentlyContinue
