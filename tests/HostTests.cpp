@@ -1,3 +1,4 @@
+#include "AllocationProbe.h"
 #include "ClippingTests.h"
 #include "plugin/PluginProcessor.h"
 #include <iostream>
@@ -27,8 +28,30 @@ int main(int argc, char **argv)
          track = std::make_unique<aurum::PluginProcessor>(true);
     clipping_tests::engineTests<float>(check);
     clipping_tests::engineTests<double>(check);
+    clipping_tests::transitionAndImpulseTests(check);
     clipping_tests::filterDesignTests(check);
     clipping_tests::aliasTest(check);
+    {
+        aurum::OversampledEngine<double> engine;
+        aurum::Parameters p;
+        p.clipMode = 1;
+        engine.prepare(48000, 2, p);
+        std::array<double, 4096> left{}, right{};
+        double *audio[]{left.data(), right.data()};
+        left.fill(.5);
+        right.fill(-.5);
+        allocation_probe::count = 0;
+        allocation_probe::enabled = true;
+        for (int mode = 0; mode < 4; ++mode)
+        {
+            p.clipMode = mode;
+            p.ceilingDb = -12;
+            engine.process(audio, 2, 4096, p);
+        }
+        allocation_probe::enabled = false;
+        check(allocation_probe::count == 0,
+              "oversampled callback and mode changes perform no C++ new/new[]");
+    }
     const auto neutral = master->parameters.snapshot();
     check(neutral.inputDb == 0 && neutral.outputDb == 0 && neutral.wetDb == 0 && neutral.blend == 1,
           "neutral APVTS controls map exactly to the declared parameter grid");

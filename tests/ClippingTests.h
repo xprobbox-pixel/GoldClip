@@ -1,5 +1,6 @@
 #pragma once
 #include "dsp/OversampledEngine.h"
+#include <chrono>
 #include <iostream>
 #include <vector>
 namespace clipping_tests
@@ -71,6 +72,44 @@ template <class T, class Check> void engineTests(Check check)
                 }
                 check(bypassExact, "host bypass retains unity and PDC while clipping engaged");
             }
+    for (int scenario = 0; scenario < 5; ++scenario)
+    {
+        aurum::Parameters p;
+        p.inputDb = 6;
+        p.outputDb = -3;
+        p.blend = .3;
+        if (scenario == 1)
+        {
+            p.linked = false;
+            p.wetDb = -6;
+            p.dryDb = -9;
+        }
+        if (scenario == 2)
+        {
+            p.delta = true;
+            p.wetMute = true;
+            p.dryMute = true;
+        }
+        if (scenario == 3)
+            p.wetMute = true;
+        if (scenario == 4)
+            p.bypass = true;
+        aurum::OversampledEngine<T> engine;
+        engine.prepare(48000, 1, p);
+        std::array<T, 4096> samples{};
+        samples.fill(T(.2));
+        T *audio[]{samples.data()};
+        engine.process(audio, 1, int(samples.size()), p);
+        const auto mix = aurum::ParallelMixer::targets(p);
+        const double expected =
+            p.bypass ? double(T(.2))
+                     : aurum::ParallelMixer::combine(double(T(.2)) * aurum::gain(6), double(T(.2)),
+                                                     mix, p.delta ? 1 : 0) *
+                           aurum::gain(-3);
+        check(std::abs(double(samples.back()) - expected) < (sizeof(T) == 4 ? 1e-7 : 1e-14),
+              "prepared oversampled Off path preserves trim, mixer, mute, Delta and plugin bypass "
+              "conventions");
+    }
     for (int mode : {1, 2, 3})
     {
         aurum::Parameters p;
@@ -110,6 +149,59 @@ template <class T, class Check> void engineTests(Check check)
         std::cout << "MEASURE mode=" << mode << " reconstructed_peak=" << peak
                   << " ceiling=" << aurum::gain(-6) << '\n';
     }
+}
+template <class Check> void transitionAndImpulseTests(Check check)
+{
+    for (double rate : {44100., 48000., 88200., 96000., 192000.})
+    {
+        aurum::OversampledEngine<double> engine;
+        aurum::Parameters p;
+        p.clipMode = 1;
+        engine.prepare(rate, 1, p);
+        std::array<double, 2048> samples{};
+        samples[256] = .001;
+        double *audio[]{samples.data()};
+        engine.process(audio, 1, int(samples.size()), p);
+        const auto peak = std::max_element(samples.begin(), samples.end());
+        const int index = int(peak - samples.begin());
+        check(std::abs(index - 256 - engine.latencySamples()) <= 1,
+              "filtered impulse peak agrees with reported latency within one sample");
+    }
+    aurum::OversampledEngine<double> engine;
+    aurum::Parameters p;
+    engine.prepare(48000, 1, p);
+    std::array<double, 257> samples{};
+    double *audio[]{samples.data()};
+    double error = 0;
+    for (int block = 0; block < 100; ++block)
+    {
+        if (block == 10)
+            p.clipMode = 1;
+        if (block == 25)
+            p.clipMode = 2;
+        if (block == 40)
+            p.clipMode = 3;
+        if (block == 55)
+            p.clipMode = 0;
+        samples.fill(.01);
+        engine.process(audio, 1, int(samples.size()), p);
+        if (block > 3)
+            for (double sample : samples)
+                error = std::max(error, std::abs(sample - .01));
+    }
+    std::cout << "MEASURE Off/Hard/Classic/Modern transition DC error=" << error << '\n';
+    check(error < 1e-5, "linear-region mode changes preserve DC without an engagement gain dip");
+    p.clipMode = 1;
+    engine.prepare(48000, 1, p);
+    samples.fill(.25);
+    const auto start = std::chrono::steady_clock::now();
+    for (int block = 0; block < 1000; ++block)
+        engine.process(audio, 1, int(samples.size()), p);
+    const double seconds =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    std::cout << "MEASURE local 4x mono double 257000 samples elapsed=" << seconds
+              << " s; audio_duration=" << 257000. / 48000
+              << " s (informational, not a real-time CPU budget)\n";
 }
 template <class Check> void filterDesignTests(Check check)
 {

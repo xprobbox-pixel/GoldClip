@@ -3,7 +3,11 @@
 #include "ParallelMixer.h"
 #include "SmoothedGain.h"
 #include "Telemetry.h"
+#include <array>
 #include <juce_dsp/juce_dsp.h>
+#include <limits>
+#include <memory>
+#include <vector>
 namespace aurum
 {
 // Fixed-quality FIR analysis/processing, prepared off the audio thread. All modes
@@ -57,7 +61,8 @@ template <class Sample> class OversampledEngine
         enable.prepare(rate, p.clipMode != 0 ? 1 : 0);
         ceiling.prepare(rate * factor, gain(p.ceilingDb));
         for (int m = 0; m < 3; ++m)
-            curve[size_t(m)].prepare(rate * factor, p.clipMode == m + 1 ? 1 : 0);
+            curve[size_t(m)].prepare(rate * factor,
+                                     (p.clipMode == m + 1 || (p.clipMode == 0 && m == 0)) ? 1 : 0);
         channels = count;
         return true;
     }
