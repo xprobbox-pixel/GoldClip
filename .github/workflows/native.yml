@@ -1,4 +1,4 @@
-name: Native foundation build and tests
+name: Native clipping build and tests
 on:
   push:
     branches: [main]
@@ -69,13 +69,13 @@ jobs:
       - name: Upload successful native binaries
         uses: actions/upload-artifact@v4
         with:
-          name: AURUM-CLIP-Phase1-${{ runner.os }}
+          name: AURUM-CLIP-Phase2A-${{ runner.os }}
           path: dist
       - name: Upload diagnostics on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: AURUM-CLIP-Phase1-${{ runner.os }}-failure-logs
+          name: AURUM-CLIP-Phase2A-${{ runner.os }}-failure-logs
           path: |
             dist/validation
             build/**/Testing/Temporary/LastTest.log

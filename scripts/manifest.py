@@ -18,4 +18,4 @@ for p in sorted(root.rglob('*')):
         record['signature']=run(['codesign','-dv',str(p)])
     files.append(record)
 root.mkdir(parents=True,exist_ok=True)
-(root/'manifest.json').write_text(json.dumps({'product':'AURUM CLIP','phase':1,'version':version,'source_commit':run(['git','rev-parse','HEAD'])['stdout'],'release_signing':'not performed','notarisation':'not performed','host':sys.platform,'files':files},indent=2)+'\n')
+(root/'manifest.json').write_text(json.dumps({'product':'AURUM CLIP','phase':'2A','version':version,'source_commit':run(['git','rev-parse','HEAD'])['stdout'],'release_signing':'not performed','notarisation':'not performed','host':sys.platform,'files':files},indent=2)+'\n')

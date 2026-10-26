@@ -24,7 +24,11 @@ class PluginEditor final : public juce::AudioProcessorEditor, private juce::Time
     std::array<juce::ToggleButton, 5> toggles;
     std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>, 5>
         toggleLinks;
-    juce::ComboBox scale;
+    juce::ComboBox scale, clipMode;
+    juce::Slider ceiling;
+    juce::Label ceilingLabel;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> modeLink;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> ceilingLink;
     juce::TextButton reset{"RESET PEAKS"};
     std::array<Envelope, 400> history{};
     unsigned head = 0;

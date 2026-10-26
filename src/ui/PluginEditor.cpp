@@ -117,13 +117,36 @@ PluginEditor::PluginEditor(PluginProcessor &p)
             i == 0   ? "Select constant-amplitude linked blend or independent dB gains."
             : i == 3 ? "Output the aligned wet-minus-original difference before final Output Trim; "
                        "ignores normal mixer levels/mutes. This affects renders."
-            : i == 4 ? "Crossfade to unity dry pass-through over 20 ms. Host bypass can provide "
-                       "immediate dry pass-through."
-                     : "Mute this path in the normal mixer. Delta monitoring remains independent.");
+            : i == 4
+                ? "Crossfade to delayed unity dry pass-through over 20 ms. Host bypass can provide "
+                  "immediate dry pass-through with the same reported delay."
+                : "Mute this path in the normal mixer. Delta monitoring remains independent.");
         canvas.addAndMakeVisible(b);
         toggleLinks[i] = std::make_unique<AudioProcessorValueTreeState::ButtonAttachment>(
             p.parameters.state, boolIds[i], b);
     }
+    clipMode.setName("Clip Mode");
+    clipMode.addItemList(StringArray{"Off", "Hard", "Classic", "Modern"}, 1);
+    clipMode.setTooltip(
+        "Off is a transparent delayed wet path. Hard is a brick curve; Classic and Modern have "
+        "different smooth knees. Original curves, not proprietary emulations.");
+    canvas.addAndMakeVisible(clipMode);
+    modeLink = std::make_unique<AudioProcessorValueTreeState::ComboBoxAttachment>(
+        p.parameters.state, "clipMode", clipMode);
+    ceiling.setName("Clip Ceiling");
+    ceiling.setSliderStyle(Slider::LinearHorizontal);
+    ceiling.setTextBoxStyle(Slider::TextBoxRight, false, 88, 24);
+    ceiling.setTextValueSuffix(" dBFS");
+    ceiling.setNumDecimalPlacesToDisplay(1);
+    ceiling.setDoubleClickReturnValue(true, 0);
+    ceiling.setTooltip("Nonlinear stage ceiling, -36 to 0 dBFS. Reconstruction, parallel summing "
+                       "and Output Trim can exceed this level. This is not a true-peak limiter.");
+    canvas.addAndMakeVisible(ceiling);
+    ceilingLink = std::make_unique<AudioProcessorValueTreeState::SliderAttachment>(
+        p.parameters.state, "ceiling", ceiling);
+    ceilingLabel.setText("CLIP CEILING", dontSendNotification);
+    ceilingLabel.setFont(Font(FontOptions(11, Font::bold)));
+    canvas.addAndMakeVisible(ceilingLabel);
     scale.setName("Window scale");
     scale.setTooltip(
         "Resize the complete interface. 80% to 175%; drag the gold corner for intermediate sizes.");
@@ -171,6 +194,9 @@ void PluginEditor::resized()
     for (size_t i = 0; i < toggles.size(); ++i)
         toggles[i].setBounds(15 + int(i) * (compact ? 99 : 168), compact ? 500 : 510,
                              compact ? 94 : 156, 32);
+    clipMode.setBounds(20, compact ? 316 : 342, 115, 26);
+    ceilingLabel.setBounds(145, compact ? 316 : 342, 90, 26);
+    ceiling.setBounds(235, compact ? 316 : 342, baseWidth - 255, 26);
     scale.setBounds(baseWidth - 115, 18, 95, 28);
     reset.setBounds(20, 553, 130, 27);
     const double percent = 100.0 * getWidth() / baseWidth;
@@ -224,6 +250,16 @@ void PluginEditor::drawWaveform(Graphics &g, Rectangle<float> r)
         g.setColour(gold);
         g.drawVerticalLine(roundToInt(x), y(v.outputMax), y(v.outputMin));
     }
+    const auto parameters = processor.parameters.snapshot();
+    if (parameters.clipMode != 0)
+    {
+        g.setColour(blue.withAlpha(.8f));
+        const float amplitude = float(gain(parameters.ceilingDb));
+        for (float sign : {-1.f, 1.f})
+            g.drawHorizontalLine(
+                roundToInt(r.getCentreY() + sign * amplitude * r.getHeight() * .4f), r.getX(),
+                r.getRight());
+    }
     g.restoreState();
 }
 void PluginEditor::paint(Graphics &original)
@@ -238,24 +274,20 @@ void PluginEditor::paint(Graphics &original)
     g.setColour(gold);
     g.fillRect(20, 64, baseWidth - 40, 2);
     text(g, "AURUM CLIP", {20, 15, 230, 32}, 25, gold);
-    text(g, processor.isCompact() ? "TRACK / PHASE 1" : "MASTER / PHASE 1",
+    text(g, processor.isCompact() ? "TRACK / PHASE 2A" : "MASTER / PHASE 2A",
          {processor.isCompact() ? 280.f : 310.f, processor.isCompact() ? 78.f : 18.f, 220, 28}, 14);
-    text(g, "ROUTING FOUNDATION", {20, 78, float(baseWidth - 40), 22}, 16);
+    text(g, "OVERSAMPLED CLIPPING", {20, 78, float(baseWidth - 40), 22}, 16);
     drawWaveform(g, {20, 116, float(baseWidth - 40), processor.isCompact() ? 150.f : 190.f});
     text(g, "ORIGINAL INPUT / PROCESSED OUTPUT", {32, 120, 400, 20}, 11);
     const float y = processor.isCompact() ? 280.f : 320.f;
     text(g, "INPUT HOLD  " + db(inputHold) + " dBFS", {20, y, 240, 26}, 14);
-    text(g, "OUTPUT HOLD  " + db(outputHold) + " dBFS",
+    text(g, (overloaded ? "OVERLOAD  " : "OUTPUT HOLD  ") + db(outputHold) + " dBFS",
          {processor.isCompact() ? 268.f : 700.f, y, processor.isCompact() ? 232.f : 350.f, 26},
          processor.isCompact() ? 12.f : 14.f, overloaded ? Colour(0xfff47a70) : gold);
-    if (overloaded)
-        text(g, "OUTPUT OVERLOAD", {20, y + 25, 300, 22}, 12, Colour(0xfff47a70));
-    text(g, "No clipping / Gold / Alchemy / oversampling in Phase 1",
-         {processor.isCompact() ? 20.f : 450.f, processor.isCompact() ? 326.f : 552.f,
-          float(processor.isCompact() ? 480 : 700), 22},
-         processor.isCompact() ? 11.f : 13.f);
-    text(g, String(JucePlugin_VersionString) + "  |  ZERO LATENCY  |  MONO / STEREO",
-         {165, 556, float(baseWidth - 180), 20}, processor.isCompact() ? 10.f : 12.f);
+    text(g,
+         String(JucePlugin_VersionString) + " | " + String(processor.getLatencySamples()) +
+             " SAMPLES PDC | FIR CLIPPER",
+         {165, 556, float(baseWidth - 180), 20}, processor.isCompact() ? 9.f : 12.f);
     text(g, "Waveform: fixed 25,600-sample history; peak-preserving 64-sample envelopes",
          {20, 582, float(baseWidth - 40), 14}, processor.isCompact() ? 8.f : 11.f, blue);
 }

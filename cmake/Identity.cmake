@@ -1,4 +1,4 @@
-set(AURUM_VERSION 0.1.0)
+set(AURUM_VERSION 0.2.0)
 set(AURUM_MANUFACTURER "Aurum Development")
 set(AURUM_BUNDLE_PREFIX "com.aurumclip.dev")
 set(AURUM_MANUFACTURER_CODE AuDv)
