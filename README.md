@@ -1,6 +1,6 @@
 # AURUM CLIP — GoldClip project
 
-Independent C++20/JUCE stereo mastering processor, originally specified as a Gold Clip-inspired workflow. AURUM CLIP is original branding and independently designed DSP; it is unaffiliated with Schwabe Digital and makes no claim of copied algorithms or sonic identity. Version 1.0.0 is undergoing final native validation and installer testing; see [release validation](docs/RELEASE-VALIDATION.md) for actual results and limitations.
+Independent C++20/JUCE stereo mastering processor, originally specified as a Gold Clip-inspired workflow. AURUM CLIP is original branding and independently designed DSP; it is unaffiliated with Schwabe Digital and makes no claim of copied algorithms or sonic identity. Version 1.0.0 has passed native Windows/macOS builds, automated plugin validation and installer tests as an unsigned development release; see [release validation](docs/RELEASE-VALIDATION.md) for actual results and limitations.
 
 ## Master and Track
 
