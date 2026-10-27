@@ -1,0 +1,12 @@
+AURUM CLIP is an independent implementation, unaffiliated with Schwabe Digital.
+This build does not claim sonic identity or true-peak compliance. The processed
+wet sample guard does not limit the final dry/wet sum. Gold and Alchemy are
+independently designed approximations, with measurements in the source docs.
+
+Unsigned or ad-hoc signed builds are development packages. Only a release that
+has actually completed publisher signing and macOS notarisation should be
+represented as signed/notarised. Review the accompanying manifest.
+
+JUCE licensing must suit the intended use and distribution. The source owner
+has not selected a public source-distribution licence; dependency notices do
+not grant rights to the original project's code.
