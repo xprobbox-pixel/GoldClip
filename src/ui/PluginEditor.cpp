@@ -354,8 +354,7 @@ void PluginEditor::namePreset(bool rename)
                         if (file.getFileNameWithoutExtension() == self->processor.presets.name)
                         {
                             ok = self->processor.presets.renameUser(file, name);
-                            if (ok)
-                                self->processor.presets.name = name;
+
                             break;
                         }
                 }
@@ -482,9 +481,11 @@ void PluginEditor::showSettings()
                     break;
                 case 14:
                 {
-                    const auto name = self->processor.presets.name;
-                    self->processor.presets.saveUser("Default");
-                    self->processor.presets.name = name;
+                    if (!self->processor.presets.makeDefault())
+                        AlertWindow::showMessageBoxAsync(MessageBoxIconType::WarningIcon,
+                                                         "Default preset",
+                                                         "Could not save the default preset.");
+                    self->refreshPresets();
                     break;
                 }
                 case 15:
@@ -494,7 +495,13 @@ void PluginEditor::showSettings()
                     for (auto file : self->userFiles)
                         if (file.getFileNameWithoutExtension() == self->processor.presets.name)
                         {
-                            self->processor.presets.removeUser(file);
+                            if (!self->processor.presets.removeUser(file))
+                            {
+                                AlertWindow::showMessageBoxAsync(MessageBoxIconType::WarningIcon,
+                                                                 "Preset",
+                                                                 "Could not delete this preset.");
+                                break;
+                            }
                             self->processor.presets.name = "Session";
                             self->processor.presets.userPreset = false;
                             self->refreshPresets();

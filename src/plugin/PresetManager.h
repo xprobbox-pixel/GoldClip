@@ -43,9 +43,11 @@ class PresetManager
         juce::MemoryBlock bytes;
         if (directory().getChildFile("Default.aurum").loadFileAsData(bytes))
         {
-            restoreSession(bytes.getData(), int(bytes.getSize()));
-            name = "Default";
-            userPreset = true;
+            if (restoreSession(bytes.getData(), int(bytes.getSize())))
+            {
+                name = "Default";
+                userPreset = true;
+            }
         }
     }
     void selectAB(int index)
@@ -208,6 +210,15 @@ class PresetManager
         userPreset = true;
         return true;
     }
+    bool makeDefault()
+    {
+        const auto previousName = name;
+        const bool previousSource = userPreset;
+        const bool saved = saveUser("Default");
+        name = previousName;
+        userPreset = previousSource;
+        return saved;
+    }
     bool loadUser(const juce::File &file)
     {
         if (file.getParentDirectory() != directory())
@@ -232,7 +243,11 @@ class PresetManager
         auto target = directory().getChildFile(newName + ".aurum");
         if (newName.isEmpty() || target.exists())
             return false;
-        return file.moveFileTo(target);
+        if (!file.moveFileTo(target))
+            return false;
+        if (userPreset && name == file.getFileNameWithoutExtension())
+            name = newName;
+        return true;
     }
 };
 } // namespace aurum

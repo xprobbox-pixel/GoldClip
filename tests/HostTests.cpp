@@ -285,9 +285,42 @@ int main(int argc, char **argv)
                   restored->parameters.snapshot().inputDb == 0,
               "user preset restores exact parameters");
         check(restored->presets.renameUser(userPresets[0], "Renamed"), "user preset rename");
+        check(restored->presets.name == "Renamed",
+              "renaming the active user preset updates its identity");
         userPresets = restored->presets.userPresets();
         check(restored->presets.removeUser(userPresets[0]), "user preset delete");
     }
+    restored->presets.factory(1);
+    const auto defaultName = restored->presets.name;
+    check(restored->presets.makeDefault() && restored->presets.name == defaultName &&
+              !restored->presets.userPreset,
+          "saving a default preserves the current preset identity");
+#if defined(_WIN32)
+    _putenv_s("AURUM_NO_SETTINGS", "0");
+#else
+    setenv("AURUM_NO_SETTINGS", "0", 1);
+#endif
+    {
+        aurum::PluginProcessor defaulted(false);
+        check(defaulted.parameters.snapshot().goldDb == .8 &&
+                  defaulted.parameters.snapshot().clipMode == 3,
+              "new instances load the user-selected default from the isolated preset directory");
+    }
+    for (auto file : restored->presets.userPresets())
+        if (file.getFileNameWithoutExtension() == "Default")
+            file.replaceWithText("broken default");
+    {
+        aurum::PluginProcessor invalidDefault(false);
+        check(invalidDefault.parameters.snapshot().goldDb == 0 &&
+                  invalidDefault.parameters.snapshot().clipMode == 0 &&
+                  !invalidDefault.presets.userPreset,
+              "invalid startup preset falls back to safe factory parameters");
+    }
+#if defined(_WIN32)
+    _putenv_s("AURUM_NO_SETTINGS", "1");
+#else
+    setenv("AURUM_NO_SETTINGS", "1", 1);
+#endif
     auto editor = std::unique_ptr<juce::AudioProcessorEditor>(restored->createEditor());
     check(editor->getWidth() == 1500 && editor->getHeight() == 750,
           "saved editor dimensions respected");
